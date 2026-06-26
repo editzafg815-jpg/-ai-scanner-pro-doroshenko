@@ -10,6 +10,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
+ADMIN_ID = 8273386412  # Твой ID для получения заявок
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -23,7 +25,7 @@ OTC_DATA = {
 
 class FSM(StatesGroup):
     reg = State()
-    check = State() # Состояние для проверки
+    check = State()
     mode = State()
     market = State()
     cat = State()
@@ -31,10 +33,9 @@ class FSM(StatesGroup):
     tf = State()
     exp = State()
 
-# --- ФУНКЦИИ ---
 def sig_text(asset, tf, exp):
     dir_text, dir_icon = random.choice([("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")])
-    text = (f"📡 **СИГНАЛ TEAM MASTER**\n\n"
+    text = (f"📡 **СИГНАЛ VLADOS USDT**\n\n"
             f"🔷 **Актив:** `{asset}`\n"
             f"⚡️ **Направление:** {dir_icon} {dir_text}\n"
             f"📊 **ТФ:** `{tf}`\n"
@@ -52,7 +53,7 @@ def sig_text(asset, tf, exp):
 # --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    text = ("👑 **TEAM MASTER: QUANTUM CORE SYSTEM v4.5**\n\n"
+    text = ("👑 **VLADOS USDT: QUANTUM CORE SYSTEM v4.5**\n\n"
             "Система инициализирована. Выберите язык:")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🇷🇺 RU", callback_data="lang"), InlineKeyboardButton(text="🇺🇸 EN", callback_data="lang")],
@@ -71,13 +72,26 @@ async def reg(c: types.CallbackQuery, state: FSMContext):
     await c.message.edit_text(text, reply_markup=kb)
     await state.set_state(FSM.reg)
 
+# --- АДМИН-ЛОГИКА ---
 @dp.callback_query(F.data == "check_reg")
 async def check_reg(c: types.CallbackQuery, state: FSMContext):
-    await c.message.edit_text("🔄 Проверка регистрации... \n✅ Регистрация подтверждена! Теперь пополните депозит.",
-                             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                 [InlineKeyboardButton(text="💰 Проверить депозит", callback_data="check_dep")]
-                             ]))
-    await state.set_state(FSM.check)
+    kb_admin = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"approve:{c.from_user.id}")],
+        [InlineKeyboardButton(text="❌ Отказать", callback_data=f"reject:{c.from_user.id}")]
+    ])
+    await bot.send_message(ADMIN_ID, f"🔔 **Новая заявка!**\nЮзер: {c.from_user.full_name}\nID: `{c.from_user.id}`", reply_markup=kb_admin)
+    await c.message.edit_text("⏳ **Заявка отправлена администратору.**\nОжидайте подтверждения доступа...")
+
+@dp.callback_query(F.data.startswith(("approve:", "reject:")))
+async def admin_decision(c: types.CallbackQuery):
+    action, user_id = c.data.split(":")
+    if action == "approve":
+        await bot.send_message(int(user_id), "✅ **Доступ одобрен!**\nТеперь пополните депозит и нажмите кнопку ниже.",
+                               reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Проверить депозит", callback_data="check_dep")]]))
+        await c.message.edit_text(f"✅ Доступ для {user_id} одобрен.")
+    else:
+        await bot.send_message(int(user_id), "❌ **В доступе отказано.** Проверьте регистрацию.")
+        await c.message.edit_text(f"❌ Доступ для {user_id} отклонен.")
 
 @dp.callback_query(F.data == "check_dep")
 async def check_dep(c: types.CallbackQuery, state: FSMContext):
@@ -86,12 +100,9 @@ async def check_dep(c: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]]))
     await state.set_state(FSM.mode)
 
-# --- Остальная логика (авто/ручной) остается без изменений ---
 @dp.callback_query(F.data == "m:auto")
 async def auto(c: types.CallbackQuery):
-    intervals = ["5 сек", "15 сек", "30 сек", "1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
-    expirations = ["2 мин", "3 мин", "4 мин", "5 мин"]
-    text, kb = sig_text(random.choice(LIVE), random.choice(intervals), random.choice(expirations))
+    text, kb = sig_text(random.choice(LIVE), "1 мин", "2 мин")
     await c.message.edit_text(text, reply_markup=kb)
 
 @dp.callback_query(F.data == "m:man")
@@ -142,6 +153,7 @@ async def final(c: types.CallbackQuery, state: FSMContext):
     text, kb = sig_text(d['asset'], d['tf'], c.data.split(":")[1])
     await c.message.edit_text(text, reply_markup=kb)
 
+# --- ЗАПУСК ---
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
