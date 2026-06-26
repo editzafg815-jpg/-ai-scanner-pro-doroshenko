@@ -153,8 +153,16 @@ async def final(c: types.CallbackQuery, state: FSMContext):
     text, kb = sig_text(d['asset'], d['tf'], c.data.split(":")[1])
     await c.message.edit_text(text, reply_markup=kb)
 
-# --- ЗАПУСК ---
+# --- ЗАПУСК ВЕБ-СЕРВЕРА И БОТА ---
+async def start_server():
+    app = web.Application()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
+    await site.start()
+
 async def main():
+    await start_server()
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
