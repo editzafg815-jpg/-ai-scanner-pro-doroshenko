@@ -10,16 +10,15 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- 1. НАСТРОЙКИ ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [%(levelname)s] - %(message)s')
+# --- КОНФИГУРАЦИЯ ---
+logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
 ADMIN_ID = "8273386412" 
 
-# --- 2. ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- 3. БАЗА АКТИВОВ ---
+# --- БАЗЫ АКТИВОВ ---
 LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
 OTC_DATA = {
     "val": ["AED/CNY OTC", "BHD/CNY OTC", "EUR/GBPOTC", "EUR/TRY OTC", "GBP/JPY OTC", "MAD/USD OTC", "NGN/USD OTC", "NZD/USD OTC", "USD/CNH OTC", "USD/EGP OTC", "USD/PHP OTC", "USD/PKR OTC", "USD/SGD OTC", "USD/THB OTC", "USD/VND OTC", "YER/USD OTC", "ZAR/USD OTC", "USD/CHF OTC", "USD/DZD OTC"],
@@ -27,58 +26,46 @@ OTC_DATA = {
     "stock": ["American Express OTC", "FACEBOOK INC OTC", "Intel OTC", "VISA OTC", "Apple OTC", "Pfizer Inc OTC", "Cisco OTC", "Tesla OTC", "Alibaba OTC", "Palantir Technologies OTC"]
 }
 
-# --- 4. СОСТОЯНИЯ ---
 class FSM(StatesGroup):
-    reg = State()
-    mode = State()
-    market = State()
-    cat = State()
-    asset = State()
-    tf = State()
-    exp = State()
+    reg = State(); mode = State(); market = State(); cat = State(); asset = State(); tf = State(); exp = State()
 
-# --- 5. ЛОГИКА СИГНАЛОВ ---
+# --- ЛОГИКА СИГНАЛОВ ---
 def get_signal_ui(asset, tf, exp):
     rsi = random.randint(30, 70)
-    vol = round(random.uniform(1.2, 5.5), 2)
-    price = round(random.uniform(1.0500, 1.4500), 4)
     dir_text, dir_icon = ("🟢 BUY / ВВЕРХ", "📈") if rsi < 55 else ("🔴 SELL / ВНИЗ", "📉")
-    
     text = (f"📡 **СИГНАЛ VLADOS USDT: QUANTUM CORE**\n\n"
             f"🔹 **Актив:** `{asset}`\n"
-            f"📊 **Binance Price:** `{price}`\n"
-            f"⚡️ **Направление VLADOS:** {dir_icon} {dir_text}\n"
-            f"📈 **RSI:** `{rsi}` | **Volume:** `{vol}M`\n"
+            f"⚡️ **Направление:** {dir_icon} {dir_text}\n"
             f"⏱ **ТФ:** `{tf}` | **Экспирация:** `{exp}`\n"
-            f"🎯 **Точность VLADOS:** `98.7%`\n\n"
+            f"🎯 **Точность:** `98.7%`\n\n"
             "⚠️ *Метод: Binance Engine (Ричард)*")
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить сигнал VLADOS", callback_data="m:auto")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="check_dep")]
+        [InlineKeyboardButton(text="🔄 Обновить сигнал", callback_data="m:auto")],
+        [InlineKeyboardButton(text="🔙 В меню", callback_data="back_to_menu")]
     ])
     return text, kb
 
-# --- 6. ХЕНДЛЕРЫ ---
+# --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    await m.answer("👑 **VLADOS USDT: QUANTUM CORE**\n\nДля активации системы, зарегистрируйтесь и пришлите ваш ID:",
-                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📈 ПЕРЕЙТИ К РЕГИСТРАЦИИ", url="https://u3.shortink.io/register?a=U7DMqgf943dAUl")]]))
+    await m.answer("👑 **VLADOS USDT: QUANTUM CORE**\n\nПришлите свой ID для регистрации:")
 
 @dp.message(F.text.isdigit())
 async def handle_reg(m: types.Message):
-    await bot.send_message(ADMIN_ID, f"🔔 **Новая заявка на доступ**\nИмя: {m.from_user.full_name}\nID: `{m.text}`",
-                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Подтвердить VLADOS", callback_data=f"ok:{m.from_user.id}")]]))
-    await m.answer("⏳ **Ваш запрос отправлен администратору VLADOS USDT. Ожидайте.**")
+    await bot.send_message(ADMIN_ID, f"🔔 **Заявка от {m.from_user.full_name}**\nID: `{m.text}`",
+                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                               [InlineKeyboardButton(text="✅ Подтвердить регистрацию", callback_data=f"ok:{m.from_user.id}")]
+                           ]))
+    await m.answer("⏳ **Заявка отправлена админу VLADOS.**")
 
 @dp.callback_query(F.data.startswith("ok:"))
 async def admin_ok(c: types.CallbackQuery):
     user_id = c.data.split(":")[1]
-    await bot.send_message(user_id, "✅ **Доступ к VLADOS USDT разрешен!**\nВыберите режим:", 
+    await bot.send_message(user_id, "✅ **Доступ к VLADOS USDT разрешен!**\nТеперь пополните депозит и сообщите админу.", 
                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                               [InlineKeyboardButton(text="🤖 Авто (Binance Engine)", callback_data="m:auto")],
-                               [InlineKeyboardButton(text="⚙️ Ручной режим", callback_data="m:man")]]))
-    await c.message.edit_text("Пользователь подтвержден.")
+                               [InlineKeyboardButton(text="🤖 Авто", callback_data="m:auto")],
+                               [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]]))
+    await c.message.edit_text("Подтверждено.")
 
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(c: types.CallbackQuery):
@@ -101,7 +88,7 @@ async def market_select(c: types.CallbackQuery, state: FSMContext):
         await c.message.edit_text("🔹 Выберите актив:", reply_markup=kb)
         await state.set_state(FSM.asset)
     else:
-        await c.message.edit_text("📂 Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        await c.message.edit_text("📂 Категория:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💵 Валюта", callback_data="cat:val")],
             [InlineKeyboardButton(text="🪙 Крипта", callback_data="cat:crypto")],
             [InlineKeyboardButton(text="📊 Акции", callback_data="cat:stock")]]))
@@ -136,21 +123,24 @@ async def final_signal(c: types.CallbackQuery, state: FSMContext):
     text, kb = get_signal_ui(d['asset'], d['tf'], c.data.split(":")[1])
     await c.message.edit_text(text, reply_markup=kb)
 
-@dp.callback_query(F.data == "check_dep")
-async def main_menu(c: types.CallbackQuery):
+@dp.callback_query(F.data == "back_to_menu")
+async def back(c: types.CallbackQuery):
     await c.message.edit_text("✅ **Главное меню VLADOS:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤖 Авто", callback_data="m:auto")],
         [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]]))
 
-# --- 7. БЕЗОПАСНЫЙ ЗАПУСК ---
-async def main():
-    # drop_pending_updates=True УБИРАЕТ КОНФЛИКТЫ
+# --- ЗАПУСК ВЕБ-СЕРВЕРА ДЛЯ RENDER ---
+async def start_bot():
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Система VLADOS USDT запущена.")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Система остановлена.")
+    port = int(os.environ.get("PORT", 8080))
+    app = web.Application()
+    app.router.add_get("/", lambda r: web.Response(text="Bot is running"))
+    runner = web.AppRunner(app)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(runner.setup())
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    loop.run_until_complete(site.start())
+    loop.run_until_complete(start_bot())
