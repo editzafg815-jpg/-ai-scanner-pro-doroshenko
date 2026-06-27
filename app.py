@@ -181,20 +181,29 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
-# --- ЗАПУСК И ВЕБ-СЕРВЕР ДЛЯ RENDER ---
-async def run_bot():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
+# --- ИСПРАВЛЕННЫЙ ЗАПУСК БОТА И ВЕБ-СЕРВЕРА ---
 async def web_index(request):
     return web.Response(text="Bot is running!")
 
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(run_bot())
+async def main():
+    # Удаляем вебхуки и запускаем лонг-поллинг бота в фоновом режиме контейнера
+    await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(dp.start_polling(bot))
     
+    # Настраиваем и поднимаем веб-сервер aiohttp
     app = web.Application()
     app.router.add_get('/', web_index)
     
     port = int(os.environ.get("PORT", 8080))
-    web.run_app(app, host='0.0.0.0', port=port)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    # Держим цикл событий активным, пока бот работает
+    while True:
+        await asyncio.sleep(3600)
+
+if __name__ == "__main__":
+    # asyncio.run() сам корректно инициализирует цикл событий без RuntimeError
+    asyncio.run(main())
