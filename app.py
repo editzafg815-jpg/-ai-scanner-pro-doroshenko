@@ -11,15 +11,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- НАСТРОЙКИ ---
+# --- КОНФИГУРАЦИЯ ---
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
 ADMIN_ID = "8273386412"
 
-logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- БАЗЫ ДАННЫХ ---
+# --- БАЗЫ АКТИВОВ ---
 LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF", "AUD/JPY", "NZD/JPY", "GBP/AUD"]
 OTC_DATA = {
     "val": ["AED/CNY OTC", "BHD/CNY OTC", "EUR/GBPOTC", "EUR/TRY OTC", "GBP/JPY OTC", "MAD/USD OTC", "NGN/USD OTC", "NZD/USD OTC", "USD/CNH OTC", "USD/EGP OTC", "USD/PHP OTC", "USD/PKR OTC", "USD/SGD OTC", "USD/THB OTC", "USD/VND OTC", "YER/USD OTC", "ZAR/USD OTC", "USD/CHF OTC", "USD/DZD OTC", "AUD/USD OTC", "EUR/USD OTC"],
@@ -32,16 +31,15 @@ EXP_MANUAL = ["30 сек", "1 мин", "2 мин", "3 мин", "4 мин", "5 м
 
 # --- СОСТОЯНИЯ ---
 class FSM(StatesGroup):
-    reg = State(); dep = State(); market = State(); cat = State(); asset = State(); tf = State(); exp = State(); broadcast = State()
+    reg = State(); dep = State(); market = State(); cat = State(); asset_select = State(); tf = State(); exp = State()
 
-# --- ФУНКЦИИ ---
-def get_sig(asset, tf, exp_str):
+def gen_signal(asset_name, tf, exp_str):
     payout, conf = random.choice(["85%", "88%", "90%", "92%", "95%"]), random.randint(85, 99)
     min_val = int(''.join(filter(str.isdigit, exp_str))) if any(c.isdigit() for c in exp_str) else 0
     end_t = (datetime.now() + timedelta(minutes=min_val)).strftime("%H:%M:%S")
     dir_t, dir_i = ("🟢 BUY", "📈") if random.choice([True, False]) else ("🔴 SELL", "📉")
     return (f"📡 **СИГНАЛ VLADOS QUANTUM**\n\n"
-            f"🔹 **Активы:** `{asset}`\n"
+            f"🔹 **Активы:** `{asset_name}`\n"
             f"⚡️ **Направление:** {dir_i} {dir_t}\n"
             f"📊 **ТФ:** `{tf}`\n"
             f"⏱ **Время:** `{exp_str}`\n"
@@ -52,31 +50,17 @@ def get_sig(asset, tf, exp_str):
 # --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
 async def start(m: types.Message, state: FSMContext):
-    await m.answer("👑 **VLADOS USDT: QUANTUM CORE**\nОтправьте ID для регистрации:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📈 ПЛАТФОРМА", url="https://u3.shortink.io/register?a=U7DMqgf943dAUl")]]))
+    await m.answer("👑 **VLADOS USDT: QUANTUM CORE**\nДля активации пришлите ID:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📈 ПЛАТФОРМА", url="https://u3.shortink.io/register?a=U7DMqgf943dAUl")]]))
     await state.set_state(FSM.reg)
 
-# Админ-рассылка
-@dp.message(Command("broadcast"))
-async def bc(m: types.Message, state: FSMContext):
-    if str(m.from_user.id) == ADMIN_ID:
-        await m.answer("Введите текст для рассылки всем пользователям:")
-        await state.set_state(FSM.broadcast)
-
-@dp.message(FSM.broadcast)
-async def do_bc(m: types.Message, state: FSMContext):
-    # Здесь можно добавить логику базы данных пользователей для реальной рассылки
-    await m.answer("Рассылка запущена (имитация).")
-    await state.clear()
-
-# Регистрация и Депозит (логика подтверждения)
 @dp.message(FSM.reg, F.text.isdigit())
 async def reg(m: types.Message):
-    await bot.send_message(ADMIN_ID, f"🔔 **Новая регистрация: {m.text}**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Одобрить", callback_data=f"ok_reg:{m.from_user.id}")]]))
-    await m.answer("⏳ Заявка на проверке.")
+    await bot.send_message(ADMIN_ID, f"🔔 **Регистрация:** {m.text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Одобрить", callback_data=f"ok_reg:{m.from_user.id}")]]))
+    await m.answer("⏳ Заявка отправлена админу.")
 
 @dp.message(F.text.isdigit())
 async def dep(m: types.Message):
-    await bot.send_message(ADMIN_ID, f"💰 **Депозит: {m.text}**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Одобрить", callback_data=f"ok_dep:{m.from_user.id}")]]))
+    await bot.send_message(ADMIN_ID, f"💰 **Депозит:** {m.text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Одобрить", callback_data=f"ok_dep:{m.from_user.id}")]]))
     await m.answer("⏳ Заявка на депозит отправлена.")
 
 @dp.callback_query(F.data.startswith("ok_"))
@@ -85,40 +69,39 @@ async def ok(c: types.CallbackQuery):
     if "reg" in c.data: await bot.send_message(u, "✅ Регистрация одобрена! Пришлите ID депозита.")
     else: 
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🤖 Авто", callback_data="m:auto")], [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]])
-        await bot.send_message(u, "✅ **Доступ открыт! Выберите режим:**", reply_markup=kb)
+        await bot.send_message(u, "✅ **Доступ открыт!**", reply_markup=kb)
     await c.message.edit_text("✅ Одобрено.")
 
-# Генераторы сигналов
 @dp.callback_query(F.data == "m:auto")
 async def auto(c: types.CallbackQuery):
-    await c.message.edit_text(get_sig(random.choice(LIVE), random.choice(TFS), random.choice(EXP_AUTO)), reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 Обновить", callback_data="m:auto")]]))
+    await c.message.edit_text(gen_signal(random.choice(LIVE), random.choice(TFS), random.choice(EXP_AUTO)), reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 Обновить", callback_data="m:auto")]]))
 
 @dp.callback_query(F.data == "m:man")
 async def man(c: types.CallbackQuery, state: FSMContext):
     await state.set_state(FSM.market)
     await c.message.edit_text("🌍 Выберите рынок:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🌍 Живой", callback_data="mk:live")], [InlineKeyboardButton(text="💎 OTC", callback_data="mk:otc")]]))
 
-# Цепочка выбора (Market -> Cat -> Asset -> TF -> Exp -> Signal)
 @dp.callback_query(F.data.startswith("mk:"))
 async def market(c: types.CallbackQuery, state: FSMContext):
     m = c.data.split(":")[1]
     if m == "live":
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=a, callback_data=f"as:{a}")] for a in LIVE])
-        await c.message.edit_text("🔹 Выберите актив:", reply_markup=kb)
+        await c.message.edit_text("🔹 Активы:", reply_markup=kb)
     else:
-        await c.message.edit_text("📂 Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=k, callback_data=f"ct:{k}")] for k in OTC_DATA.keys()]))
-    await state.set_state(FSM.asset)
+        await c.message.edit_text("📂 Категория:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=k, callback_data=f"ct:{k}")] for k in OTC_DATA.keys()]))
+    await state.set_state(FSM.asset_select)
 
 @dp.callback_query(F.data.startswith("ct:"))
 async def ct(c: types.CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=a, callback_data=f"as:{a}")] for a in OTC_DATA[c.data.split(":")[1]]])
-    await c.message.edit_text("🔹 Выберите актив:", reply_markup=kb)
+    await c.message.edit_text("🔹 Активы:", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("as:"))
 async def sel_as(c: types.CallbackQuery, state: FSMContext):
-    await state.update_data(as=c.data.split(":")[1])
+    # ИСПРАВЛЕНО: 'as' заменено на 'asset_name'
+    await state.update_data(asset_name=c.data.split(":")[1])
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=f"tf:{t}")] for t in TFS])
-    await c.message.edit_text("⏳ Выберите ТФ:", reply_markup=kb)
+    await c.message.edit_text("⏳ ТФ:", reply_markup=kb)
     await state.set_state(FSM.tf)
 
 @dp.callback_query(F.data.startswith("tf:"))
@@ -131,12 +114,12 @@ async def sel_tf(c: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("exp:"))
 async def final(c: types.CallbackQuery, state: FSMContext):
     d = await state.get_data()
-    await c.message.edit_text(get_sig(d['as'], d['tf'], c.data.split(":")[1]), reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 В меню", callback_data="m:man")]]))
+    await c.message.edit_text(gen_signal(d['asset_name'], d['tf'], c.data.split(":")[1]), reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 В меню", callback_data="m:man")]]))
 
 # --- ЗАПУСК ---
 async def web_s():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Bot Quantum Core Active"))
+    app.router.add_get("/", lambda r: web.Response(text="Bot Active"))
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080)))
