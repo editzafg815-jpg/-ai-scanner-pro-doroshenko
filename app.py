@@ -1,169 +1,203 @@
-import asyncio
-import random
+
 import os
+import asyncio
+import hashlib
+import logging
+import random
+from datetime import datetime, timedelta
 from aiohttp import web
-from aiogram import Bot, Dispatcher, F, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
-BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412  # Твой ID для получения заявок
+# --- 1. КОНФИГУРАЦИЯ ---
+# --- КОНФИГУРАЦИЯ ---
+BOT_TOKEN = "8643698714:AAEh3AdcOKgdhE5NJ4s7ebIAnsM6zGXdkLI"
+PARTNER_ID = "1336904"
+API_TOKEN = "Zc4X9zu0EMrqbPuLy3tN"
+PLATFORM_URL = "https://u3.shortink.io/cabinet/demo-quick-high-low?utm_campaign=850173&utm_source=affiliate&utm_medium=sr&a=RLQDltKf13Zlrj&al=1771346&ac=smart-link&cid=960963&code=WELCOME50"
+SUPPORT_URL = "https://t.me/andriddddd"
+WHITE_LIST = [6765689893, 8273386412]
+SUPPORT_URL = "https://t.me/andriddddd"
+PLATFORM_URL = "https://u3.shortink.io/cabinet/demo-quick-high-low?utm_campaign=850173&utm_source=affiliate&utm_medium=sr&a=RLQDltKf13Zlrj&al=1771346&ac=smart-link&cid=960963&code=WELCOME50"
+# --- БАЗЫ АКТИВОВ ---
+CURRENCIES = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD"]
+CROSS_PAIRS = ["EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
+OTC = ["AED/CNY OTC", "BHD/CNY OTC", "EUR/GBP OTC", "EUR/TRY OTC", "GBP/JPY OTC", "MAD/USD OTC", "NGN/USD OTC", "NZD/USD OTC", "USD/CNH OTC", "USD/EGP OTC", "USD/PHP OTC", "USD/PKR OTC", "USD/SGD OTC", "USD/THB OTC", "USD/VND OTC", "YER/USD OTC", "ZAR/USD OTC", "USD/CHF OTC", "USD/DZD OTC", "Cardano OTC", "Bitcoin ETF OTC", "BNB OTC", "Polkadot OTC", "Litecoin OTC", "Polygon OTC", "Solana OTC", "TRON OTC", "Chainlink OTC", "Bitcoin OTC", "American Express OTC", "FACEBOOK INC OTC", "Intel OTC", "VISA OTC", "Apple OTC", "Pfizer Inc OTC", "Cisco OTC", "Tesla OTC", "Alibaba OTC", "Palantir Technologies OTC"]
 
+# --- 2. АКТИВЫ ---
+ALL_PAIRS = [
+    "GBP/USD OTC", "EUR/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC",
+    "EUR/GBP OTC", "EUR/JPY OTC", "USD/CHF OTC", "Bitcoin OTC", "Ethereum OTC",
+    "AED/CNY OTC", "BHD/CNY OTC", "EUR/TRY OTC", "GBP/JPY OTC", "MAD/USD OTC",
+    "NGN/USD OTC", "NZD/USD OTC", "USD/CNH OTC", "USD/EGP OTC", "USD/PHP OTC",
+    "USD/PKR OTC", "USD/SGD OTC", "USD/THB OTC", "USD/VND OTC", "YER/USD OTC",
+    "ZAR/USD OTC", "USD/DZD OTC", "Cardano OTC", "Bitcoin ETF OTC", "BNB OTC",
+    "Polkadot OTC", "Litecoin OTC", "Polygon OTC", "Solana OTC", "TRON OTC",
+    "Chainlink OTC", "American Express OTC", "Intel OTC", "VISA OTC", "Tesla OTC"
+]
+# --- 3. ИНИЦИАЛИЗАЦИЯ ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - [CORE] - %(message)s')
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
-
-# --- ДАННЫЕ ---
-LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
-OTC_DATA = {
-    "val": ["AED/CNY OTC", "BHD/CNY OTC", "EUR/GBPOTC", "EUR/TRY OTC", "GBP/JPY OTC", "MAD/USD OTC", "NGN/USD OTC", "NZD/USD OTC", "USD/CNH OTC", "USD/EGP OTC", "USD/PHP OTC", "USD/PKR OTC", "USD/SGD OTC", "USD/THB OTC", "USD/VND OTC", "YER/USD OTC", "ZAR/USD OTC", "USD/CHF OTC", "USD/DZD OTC"],
-    "crypto": ["Cardano OTC", "Bitcoin ETF OTC", "BNB OTC", "Polkadot OTC", "Litecoin OTC", "Polygon OTC", "Solana OTC", "TRON OTC", "Chainlink OTC", "Bitcoin OTC"],
-    "stock": ["American Express OTC", "FACEBOOK INC OTC", "Intel OTC", "VISA OTC", "Apple OTC", "Pfizer Inc OTC", "Cisco OTC", "Tesla OTC", "Alibaba OTC", "Palantir Technologies OTC"]
-}
-
-class FSM(StatesGroup):
-    reg = State()
-    check = State()
-    mode = State()
-    market = State()
-    cat = State()
-    asset = State()
-    tf = State()
-    exp = State()
-
-def sig_text(asset, tf, exp):
-    dir_text, dir_icon = random.choice([("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")])
-    text = (f"📡 **СИГНАЛ VLADOS USDT**\n\n"
-            f"🔷 **Актив:** `{asset}`\n"
-            f"⚡️ **Направление:** {dir_icon} {dir_text}\n"
-            f"📊 **ТФ:** `{tf}`\n"
-            f"⏱ **Экспирация:** `{exp}`\n"
-            f"⏳ **Вход до:** {(asyncio.get_event_loop().time() + 300):.0f}\n"
-            f"🎯 **Выплата:** `{random.randint(90, 96)}%`\n"
-            f"🔥 **Индекс уверенности:** `{random.randint(93, 98)}%`\n\n"
-            "⚠️ *Соблюдайте риски.*")
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📡 ПОЛУЧИТЬ КВАНТОВЫЙ СИГНАЛ", callback_data="m:auto")],
-        [InlineKeyboardButton(text="👤 ПОДДЕРЖКА", url="https://t.me/support_link")]
-    ])
-    return text, kb
-
-# --- ХЕНДЛЕРЫ ---
+dp = Dispatcher()
+# --- 4. МАТЕМАТИЧЕСКИЙ АНАЛИЗАТОР (БЕЗ РАНДОМА) ---
+class MathAnalyzer:
+    def get_signal(self, asset: str):
+        # Используем текущее время для математического расчета тренда
+        now = datetime.now()
+        # Хешируем время и актив, чтобы получать стабильный "рыночный индекс"
+        h = hashlib.md5(f"{now.strftime('%H%M')}:{asset}".encode()).hexdigest()
+        trend_val = int(h[:4], 16) % 100 
+        
+        direction = "📈 🟢 BUY / ВВЕРХ" if trend_val > 48 else "📉 🔴 SELL / ВНИЗ"
+        tf = "M5" if trend_val % 2 == 0 else "M1"
+        
+        # Экспирация от 2 до 5 минут
+        duration = 2 + (trend_val % 4)
+        finish_time = (now + timedelta(minutes=duration)).strftime("%H:%M:%S")
+        
+        payout = "92%" if trend_val > 30 else "87%"
+        confidence = 88 + (trend_val % 10)
+        
+        return direction, tf, duration, finish_time, payout, confidence
+analyzer = MathAnalyzer()
+# --- 5. ВЕРИФИКАЦИЯ ---
+async def verify_user(uid: str):
+    if int(uid) in WHITE_LIST: return True, True
+    # [Заглушка: тут проверка через API PocketOption]
+    return True, True 
+# --- 6. ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
 async def start(m: types.Message):
-    text = ("👑 **VLADOS USDT: QUANTUM CORE SYSTEM v4.5**\n\n"
-            "Система инициализирована. Выберите язык:")
+    text = (
+        "👑 **TEAM MASTER: QUANTUM CORE SYSTEM v4.5**\n\n"
+        "Система инициализирована. Мы анализируем рыночные данные 24/7 для поиска оптимальных точек входа.\n\n"
+        "🌐 **Выберите предпочтительный язык интерфейса:**\n"
+        "Select your language / Выберите язык / Оберіть мову / Wählen Sie eine Sprache / Seleccione el idioma / Choisissez votre langue"
+    )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🇷🇺 RU", callback_data="lang"), InlineKeyboardButton(text="🇺🇸 EN", callback_data="lang")],
-        [InlineKeyboardButton(text="🇺🇦 UA", callback_data="lang"), InlineKeyboardButton(text="🇩🇪 DE", callback_data="lang")]
+dp = Dispatcher(storage=MemoryStorage())
+class SignalStates(StatesGroup):
+    choosing_cat = State()
+    choosing_asset = State()
+    choosing_exp = State()
+# --- КЛАВИАТУРЫ ---
+def lang_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺 RU", callback_data="lang:ru"), InlineKeyboardButton(text="🇺🇸 EN", callback_data="lang:en")],
+        [InlineKeyboardButton(text="🇺🇦 UA", callback_data="lang:ua"), InlineKeyboardButton(text="🇩🇪 DE", callback_data="lang:de")],
+        [InlineKeyboardButton(text="🇪🇸 ES", callback_data="lang:es"), InlineKeyboardButton(text="🇫🇷 FR", callback_data="lang:fr")]
     ])
     await m.answer(text, reply_markup=kb)
+def register_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📈 ПЕРЕЙТИ НА ПЛАТФОРМУ", url=PLATFORM_URL)]])
+def main_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🤖 АВТОМАТИЧЕСКИЙ РЕЖИМ", callback_data="auto")],
+        [InlineKeyboardButton(text="⚙️ РУЧНОЙ РЕЖИМ", callback_data="manual")]
+    ])
+def signal_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 ПЕРЕКРЫТИЕ", callback_data="auto")],
+        [InlineKeyboardButton(text="👨‍💻 ПОДДЕРЖКА", url=SUPPORT_URL)]
+    ])
+# --- ЛОГИКА ---
+@dp.message(Command("start"))
+async def start(m: types.Message):
+    await m.answer("👑 **TEAM MASTER: QUANTUM CORE SYSTEM v4.5**\n\nСистема инициализирована. Мы анализируем рыночные данные 24/7 для поиска оптимальных точек входа.\n\n🌐 **Выберите язык:**", reply_markup=lang_kb())
 
-@dp.callback_query(F.data == "lang")
-async def reg(c: types.CallbackQuery, state: FSMContext):
-    text = ("📝 **ШАГ 1: РЕГИСТРАЦИЯ**\n\n"
-            "Зарегистрируйтесь по ссылке и отправьте ID (8273386412):")
+@dp.callback_query(F.data.startswith("lang:"))
+async def select_lang(c: types.CallbackQuery):
+    await c.message.edit_text(
+        "📝 **ШАГ 1: РЕГИСТРАЦИЯ В СИСТЕМЕ**\n\n"
+        "Для обеспечения синхронизации вашего торгового аккаунта с нашим квантовым ядром, вы обязаны пройти регистрацию по партнерской ссылке.\n\n"
+        "После завершения регистрации, пожалуйста, скопируйте ваш ID и отправьте его в этот чат.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📈 ПЕРЕЙТИ НА ПЛАТФОРМУ", url=PLATFORM_URL)]
+        ])
+    )
+async def registration_step(c: types.CallbackQuery):
+    await c.message.answer("📝 **ШАГ 1: РЕГИСТРАЦИЯ В СИСТЕМЕ**\n\nДля обеспечения синхронизации вашего торгового аккаунта с нашим квантовым ядром, пройдите регистрацию и отправьте ID в этот чат.", reply_markup=register_kb())
+
+@dp.message(F.text.isdigit())
+async def auth(m: types.Message):
+    await m.answer("✅ Доступ активен!", reply_markup=get_main_kb())
+@dp.callback_query(F.data == "get_sig")
+async def get_sig(c: types.CallbackQuery):
+    asset = ALL_PAIRS[datetime.now().second % len(ALL_PAIRS)]
+    direction, tf, duration, finish, payout, conf = analyzer.get_signal(asset)
+    
+    signal = (
+        f"📡 **СИГНАЛ TEAM MASTER**\n\n"
+        f"🔹 **Актив:** `{asset}`\n"
+        f"⚡️ **Направление:** {direction}\n"
+        f"📊 **ТФ:** `{tf}`\n"
+        f"⏱ **Экспирация:** `{duration} мин`\n"
+        f"⏳ **Вход до:** `{finish}`\n"
+        f"🎯 **Выплата:** `{payout}`\n"
+        f"🔥 **Индекс уверенности:** `{conf}%`\n\n"
+        "⚠️ *Соблюдайте риски.*"
+    )
+    await c.message.answer(signal, reply_markup=get_main_kb())
+def get_main_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📡 ПОЛУЧИТЬ КВАНТОВЫЙ СИГНАЛ", callback_data="get_sig")],
+        [InlineKeyboardButton(text="👨‍💻 ПОДДЕРЖКА", url=SUPPORT_URL)]
+    if int(m.text) in WHITE_LIST:
+        await m.answer("✅ **Синхронизация успешна!**", reply_markup=main_kb())
+    else:
+        await m.answer("❌ **Ошибка: ID не найден в базе данных квантового ядра.**")
+# АВТО РЕЖИМ
+@dp.callback_query(F.data == "auto")
+async def auto_mode(c: types.CallbackQuery):
+    asset = random.choice(CURRENCIES + CROSS_PAIRS + OTC)
+    exp = random.randint(2, 5)
+    sig = (f"🚀 **AI QUANTUM AUTO-SIGNAL**\n\n🔹 Актив: `{asset}`\n⏱ Экспирация: `{exp} мин`\n📈 Направление: 🟢 BUY / ВВЕРХ\n🎯 Индекс AI: `99.2%`")
+    await c.message.answer(sig, reply_markup=signal_kb())
+# РУЧНОЙ РЕЖИМ
+@dp.callback_query(F.data == "manual")
+async def manual_mode(c: types.CallbackQuery, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📈 ПЕРЕЙТИ НА ПЛАТФОРМУ", url="https://u3.shortink.io/register?utm_campaign=848831&utm_source=affiliate&utm_medium=sr&a=U7DMqgf943dAUl&al=1768608&ac=vladik_trading&cid=959248&code=WELCOME50")],
-        [InlineKeyboardButton(text="✅ Проверить регистрацию", callback_data="check_reg")]
+        [InlineKeyboardButton(text="💵 Валюты", callback_data="cat:curr")],
+        [InlineKeyboardButton(text="💱 Кросс-курсы", callback_data="cat:cross")],
+        [InlineKeyboardButton(text="💎 OTC/Акции", callback_data="cat:otc")]
     ])
-    await c.message.edit_text(text, reply_markup=kb)
-    await state.set_state(FSM.reg)
-
-# --- АДМИН-ЛОГИКА ---
-@dp.callback_query(F.data == "check_reg")
-async def check_reg(c: types.CallbackQuery, state: FSMContext):
-    kb_admin = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"approve:{c.from_user.id}")],
-        [InlineKeyboardButton(text="❌ Отказать", callback_data=f"reject:{c.from_user.id}")]
-    ])
-    await bot.send_message(ADMIN_ID, f"🔔 **Новая заявка!**\nЮзер: {c.from_user.full_name}\nID: `{c.from_user.id}`", reply_markup=kb_admin)
-    await c.message.edit_text("⏳ **Заявка отправлена администратору.**\nОжидайте подтверждения доступа...")
-
-@dp.callback_query(F.data.startswith(("approve:", "reject:")))
-async def admin_decision(c: types.CallbackQuery):
-    action, user_id = c.data.split(":")
-    if action == "approve":
-        await bot.send_message(int(user_id), "✅ **Доступ одобрен!**\nТеперь пополните депозит и нажмите кнопку ниже.",
-                               reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Проверить депозит", callback_data="check_dep")]]))
-        await c.message.edit_text(f"✅ Доступ для {user_id} одобрен.")
-    else:
-        await bot.send_message(int(user_id), "❌ **В доступе отказано.** Проверьте регистрацию.")
-        await c.message.edit_text(f"❌ Доступ для {user_id} отклонен.")
-
-@dp.callback_query(F.data == "check_dep")
-async def check_dep(c: types.CallbackQuery, state: FSMContext):
-    await c.message.edit_text("✅ **Депозит подтвержден. Выберите режим:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤖 Автомат", callback_data="m:auto")], 
-        [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]]))
-    await state.set_state(FSM.mode)
-
-@dp.callback_query(F.data == "m:auto")
-async def auto(c: types.CallbackQuery):
-    text, kb = sig_text(random.choice(LIVE), "1 мин", "2 мин")
-    await c.message.edit_text(text, reply_markup=kb)
-
-@dp.callback_query(F.data == "m:man")
-async def man(c: types.CallbackQuery, state: FSMContext):
-    await c.message.edit_text("🌍 Выберите рынок:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌍 Живой", callback_data="market:live")], 
-        [InlineKeyboardButton(text="💎 OTC", callback_data="market:otc")]]))
-    await state.set_state(FSM.market)
-
-@dp.callback_query(F.data.startswith("market:"))
-async def market_choice(c: types.CallbackQuery, state: FSMContext):
-    if c.data.split(":")[1] == "live":
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=p, callback_data=f"a:{p}")] for p in LIVE])
-        await c.message.edit_text("🔹 Выберите актив:", reply_markup=kb)
-        await state.set_state(FSM.asset)
-    else:
-        await c.message.edit_text("📂 Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💵 Валюта", callback_data="cat:val")], 
-            [InlineKeyboardButton(text="🪙 Крипта", callback_data="cat:crypto")], 
-            [InlineKeyboardButton(text="📊 Акции", callback_data="cat:stock")]]))
-        await state.set_state(FSM.cat)
-
-@dp.callback_query(F.data.startswith("cat:"))
-async def cat_choice(c: types.CallbackQuery, state: FSMContext):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=a, callback_data=f"a:{a}")] for a in OTC_DATA[c.data.split(":")[1]]])
+    await c.message.edit_text("📂 Выберите категорию:", reply_markup=kb)
+    await state.set_state(SignalStates.choosing_cat)
+@dp.callback_query(SignalStates.choosing_cat, F.data.startswith("cat:"))
+async def select_asset(c: types.CallbackQuery, state: FSMContext):
+    cat = c.data.split(":")[1]
+    items = CURRENCIES if cat == "curr" else (CROSS_PAIRS if cat == "cross" else OTC)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=i, callback_data=f"asset:{i}")] for i in items[:8]])
     await c.message.edit_text("🔹 Выберите актив:", reply_markup=kb)
-    await state.set_state(FSM.asset)
+    await state.set_state(SignalStates.choosing_asset)
+@dp.callback_query(SignalStates.choosing_asset, F.data.startswith("asset:"))
+async def select_exp(c: types.CallbackQuery, state: FSMContext):
+    asset = c.data.split(":")[1]
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{i} мин", callback_data=f"exp:{asset}:{i}")] for i in [2, 3, 4, 5]])
+    await c.message.edit_text("⏳ Экспирация:", reply_markup=kb)
+    await state.set_state(SignalStates.choosing_exp)
 
-@dp.callback_query(F.data.startswith("a:"))
-async def tf_choice(c: types.CallbackQuery, state: FSMContext):
-    await state.update_data(asset=c.data.split(":")[1])
-    intervals = ["5 сек", "15 сек", "30 сек", "1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=i, callback_data=f"tf:{i}")] for i in intervals])
-    await c.message.edit_text("⏳ Интервал свечи:", reply_markup=kb)
-    await state.set_state(FSM.tf)
-
-@dp.callback_query(F.data.startswith("tf:"))
-async def exp_choice(c: types.CallbackQuery, state: FSMContext):
-    await state.update_data(tf=c.data.split(":")[1])
-    expirations = ["2 мин", "3 мин", "4 мин", "5 мин"]
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=e, callback_data=f"exp:{e}")] for e in expirations])
-    await c.message.edit_text("⌛️ Экспирация:", reply_markup=kb)
-    await state.set_state(FSM.exp)
-
-@dp.callback_query(F.data.startswith("exp:"))
-async def final(c: types.CallbackQuery, state: FSMContext):
-    d = await state.get_data()
-    text, kb = sig_text(d['asset'], d['tf'], c.data.split(":")[1])
-    await c.message.edit_text(text, reply_markup=kb)
-
-# --- ЗАПУСК ВЕБ-СЕРВЕРА И БОТА ---
-async def start_server():
+# --- 7. WEB СЕРВЕР (ДЛЯ UPTIMEROBOT) ---
+async def web_server():
     app = web.Application()
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
     await site.start()
+@dp.callback_query(SignalStates.choosing_exp, F.data.startswith("exp:"))
+async def final_signal(c: types.CallbackQuery, state: FSMContext):
+    _, asset, exp = c.data.split(":")
+    finish = (datetime.now() + timedelta(minutes=int(exp))).strftime("%H:%M:%S")
+    sig = (f"📡 **СИГНАЛ TEAM MASTER**\n\n🔹 **Актив:** `{asset}`\n⚡️ **Направление:** 🟢 BUY\n⏱ **Экспирация:** `{exp} мин`\n⏳ **Вход до:** `{finish}`\n🔥 **Индекс:** `95%`")
+    await c.message.answer(sig, reply_markup=signal_kb())
+    await state.clear()
 
 async def main():
-    await start_server()
-    await bot.delete_webhook(drop_pending_updates=True)
+    await asyncio.gather(web_server(), dp.start_polling(bot))
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
