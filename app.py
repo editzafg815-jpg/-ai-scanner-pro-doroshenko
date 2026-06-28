@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412  # ID админа для уведомлений
+ADMIN_ID = 8273386412  # ID разработчика
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
@@ -37,6 +37,7 @@ ALL_EXPIRATIONS = ["1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
 
 class FSM(StatesGroup):
     registration = State()
+    wait_approval = State()
     mode_selection = State()
     market_selection = State()
     category_selection = State()
@@ -44,7 +45,7 @@ class FSM(StatesGroup):
     timeframe_selection = State()
     expiration_selection = State()
 
-# --- ТВОЙ ИНТЕРФЕЙС СИГНАЛОВ (VLADOS USDT) ---
+# --- ИНТЕРФЕЙС СИГНАЛОВ (VLADOS USDT) ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
@@ -69,14 +70,17 @@ def generate_signal_ui(asset, tf, exp):
     ])
     return text, kb
 
+def get_main_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🤖 Автоматический режим", callback_data="m:auto")],
+        [InlineKeyboardButton(text="⚙️ Ручной режим", callback_data="m:man")]
+    ])
+
 # --- ХЕНДЛЕРЫ ---
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("✅ **Главное меню. Выберите режим:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤖 Автоматический режим", callback_data="m:auto")],
-        [InlineKeyboardButton(text="⚙️ Ручной режим", callback_data="m:man")]
-    ]))
+    await callback.message.edit_text("✅ **Главное меню. Выберите режим:**", reply_markup=get_main_menu_kb())
     await state.set_state(FSM.mode_selection)
 
 @dp.message(Command("start"))
@@ -108,27 +112,62 @@ async def process_registration(message: types.Message, state: FSMContext):
         await message.answer("❌ **Неверный формат ID.** Пожалуйста, отправьте корректный ID, состоящий только из цифр.")
         return
 
+    admin_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Активировать", callback_data=f"approve:{message.from_user.id}:{user_id_input}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"deny:{message.from_user.id}")
+        ]
+    ])
+
     try:
         await bot.send_message(
             chat_id=ADMIN_ID,
-            text=f"🔔 **Новый пользователь отправил ID на проверку!**\n\n"
-                 f"👤 Пользователь: @{message.from_user.username or 'нет юзернейма'}\n"
-                 f"🆔 Telegram ID: `{message.from_user.id}`\n"
-                 f"📊 ID на платформе: `{user_id_input}`"
+            text=f"🔔 **ЗАПРОС НА АКТИВАЦИЮ**\n\n"
+                 f"👤 Юзер: @{message.from_user.username or 'нет юзернейма'}\n"
+                 f"🆔 TG ID: `{message.from_user.id}`\n"
+                 f"📊 ID на платформе: `{user_id_input}`",
+            reply_markup=admin_kb
         )
     except Exception as e:
-        logging.error(f"Не удалось отправить уведомление админу: {e}")
+        logging.error(f"Не удалось отправить запрос админу: {e}")
 
-    await message.answer(
-        f"✅ **ID `{user_id_input}` успешно принят на активацию!**\n"
-        "Депозит проверяется. Выберите режим работы бота:", 
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🤖 Автомат", callback_data="m:auto")],
-            [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]
-        ])
-    )
-    await state.set_state(FSM.mode_selection)
+    await message.answer("⏳ **Ваш ID успешно отправлен на проверку разработчику.**\nПожалуйста, дождитесь подтверждения активации. Бот уведомит вас автоматически.")
+    await state.set_state(FSM.wait_approval)
 
+# --- ЛОГИКА ПОДТВЕРЖДЕНИЯ (ДЛЯ РАЗРАБОТЧИКА) ---
+@dp.callback_query(F.data.startswith("approve:"))
+async def admin_approve(callback: types.CallbackQuery):
+    _, user_tg_id, platform_id = callback.data.split(":")
+    user_tg_id = int(user_tg_id)
+    
+    try:
+        user_state = dp.fsm.resolve_context(bot, chat_id=user_tg_id, user_id=user_tg_id)
+        await user_state.set_state(FSM.mode_selection)
+        
+        await bot.send_message(
+            chat_id=user_tg_id,
+            text=f"🎉 **Поздравляем! Ваш аккаунт (ID: {platform_id}) успешно активирован!**\nДоступ к сигналам открыт. Выберите режим работы бота:",
+            reply_markup=get_main_menu_kb()
+        )
+        await callback.message.edit_text(f"✅ Пользователь `{user_tg_id}` (ID: {platform_id}) успешно **ОДОБРЕН**.")
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Ошибка при активации: {e}")
+
+@dp.callback_query(F.data.startswith("deny:"))
+async def admin_deny(callback: types.CallbackQuery):
+    _, user_tg_id = callback.data.split(":")
+    user_tg_id = int(user_tg_id)
+    
+    try:
+        await bot.send_message(
+            chat_id=user_tg_id,
+            text="❌ **К сожалению, ваш запрос на активацию был отклонен разработчиком.** Проверьте правильность регистрации."
+        )
+        await callback.message.edit_text(f"❌ Пользователь `{user_tg_id}` был **ОТКЛОНЕН**.")
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Ошибка при отклонении: {e}")
+
+# --- ОСТАЛЬНАЯ ЛОГИКА СИГНАЛОВ ---
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -209,13 +248,10 @@ async def regenerate_signal(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "back_to_assets")
 async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("✅ **Выберите режим работы бота:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤖 Автомат", callback_data="m:auto")],
-        [InlineKeyboardButton(text="⚙️ Ручной", callback_data="m:man")]
-    ]))
+    await callback.message.edit_text("✅ **Выберите режим работы бота:**", reply_markup=get_main_menu_kb())
     await state.set_state(FSM.mode_selection)
 
-# --- ИЗОЛИРОВАННЫЙ СЕРВЕР ДЛЯ ОБХОДА ОШИБОК RENDER ---
+# --- ИЗОЛИРОВАННЫЙ ВЕБ-СЕРВЕР ---
 async def web_index(request):
     return web.Response(text="Web server active.")
 
@@ -227,16 +263,18 @@ def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     web.run_app(app, host='0.0.0.0', port=port, loop=loop, handle_signals=False)
 
-# --- ОСНОВНОЙ ЗАПУСК ---
+# --- ЗАПУСК ---
 async def main():
-    # Запуск фейк-сервера проверки Render в отдельном изолированном потоке
     server_thread = Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    # Сброс старых сессий, вебхуков и зависших апдейтов перед стартом polling
+    # ЖЕСТКИЙ СБРОС СТАРЫХ СЕССИЙ ТЕЛЕГРАМА (АНТИ-КОНФЛИКТ)
+    logging.info("Закрываем старые копии бота...")
+    await bot.close()  # Закрываем сессию, если она была открыта в текущем потоке
     await bot.delete_webhook(drop_pending_updates=True)
-    
-    logging.info("Бот VLADOS USDT успешно запущен без конфликтов!")
+    await asyncio.sleep(2.0)  # Даем 2 секунды Render, чтобы старый процесс умер наверняка
+
+    logging.info("Бот VLADOS USDT успешно запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
