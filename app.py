@@ -9,11 +9,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.webhook.aiohttp_impl import SimpleRequestHandler, setup_application
 
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
 ADMIN_ID = 8273386412  # ID для уведомлений
+
+# ⚠️ ВСТАВЬ СЮДА СВОЮ ССЫЛКУ С RENDER (БЕЗ СЛЭША НА КОНЦЕ)
+# Например: "https://my-trading-bot.onrender.com"
+RENDER_URL = "https://your-app-name.onrender.com" 
+WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
@@ -215,28 +222,25 @@ async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     ]))
     await state.set_state(FSM.mode_selection)
 
-# --- ИСПРАВЛЕННЫЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ---
-async def web_index(request):
-    return web.Response(text="Bot is perfectly running!")
+# --- УПРАВЛЕНИЕ ВЕБХУКОМ ---
+async def on_startup(bot: Bot):
+    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
 
-async def start_web_server():
+async def web_index(request):
+    return web.Response(text="Bot Webhook is perfectly running!")
+
+def main():
     app = web.Application()
     app.router.add_get('/', web_index)
-    runner = web.AppRunner(app)
-    await runner.setup()
+    
+    # Регистрация обработчика вебхуков aiogram в aiohttp
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
+    
+    app.on_startup.append(lambda _: on_startup(bot))
+    
     port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-
-async def main():
-    # Запуск веб-сервера без блокировки основного event loop
-    await start_web_server()
-    
-    # Сброс вебхука и очистка зависших апдейтов перед стартом
-    await bot.delete_webhook(drop_pending_updates=True)
-    
-    # Корректный запуск лонг-поллинга
-    await dp.start_polling(bot)
+    web.run_app(app, host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
