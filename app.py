@@ -20,7 +20,7 @@ bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# --- БАЗА ДАННЫХ (АКЦИИ ВОЗВРАЩЕНЫ) ---
+# --- БАЗА ДАННЫХ ---
 LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
 
 OTC_GROUPS = {
@@ -29,7 +29,6 @@ OTC_GROUPS = {
     "stock": ["Tesla OTC", "Apple OTC", "Facebook OTC", "Amazon OTC"]
 }
 
-# Все доступные активы для автоматического режима
 ALL_ASSETS = LIVE + OTC_GROUPS["val"] + OTC_GROUPS["crypto"] + OTC_GROUPS["stock"]
 ALL_TIMEFRAMES = ["5 сек", "15 сек", "30 сек", "1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
 ALL_EXPIRATIONS = ["1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
@@ -43,7 +42,7 @@ class FSM(StatesGroup):
     expiration_selection = State()
     registration = State()
 
-# --- ЛОГИКА СИГНАЛОВ (ИЗМЕНЕНО НА VLADOS USDT) ---
+# --- ЛОГИКА СИГНАЛОВ ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
@@ -101,7 +100,6 @@ async def select_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text, reply_markup=kb)
     await state.set_state(FSM.registration)
 
-# ОБРАБОТКА ВВЕДЕННОГО ID С ПОДТВЕРЖДЕНИЕМ
 @dp.message(FSM.registration)
 async def process_registration(message: types.Message, state: FSMContext):
     user_id_input = message.text.strip()
@@ -131,11 +129,9 @@ async def process_registration(message: types.Message, state: FSMContext):
     )
     await state.set_state(FSM.mode_selection)
 
-# АВТОМАТИЧЕСКИЙ РЕЖИМ (ВЫДАЕТ СИГНАЛ САМ И СРАЗУ)
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    # Бот сам выбирает случайные параметры
     asset = random.choice(ALL_ASSETS)
     tf = random.choice(ALL_TIMEFRAMES)
     exp = random.choice(ALL_EXPIRATIONS)
@@ -143,7 +139,6 @@ async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
-# РУЧНОЙ РЕЖИМ
 @dp.callback_query(F.data == "m:man")
 async def manual_mode(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🌍 **Выберите рынок:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -201,7 +196,6 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
-# --- ОБРАБОТЧИКИ ДЛЯ КНОПОК ПОД СИГНАЛОМ ---
 @dp.callback_query(F.data.startswith("regen:"))
 async def regenerate_signal(callback: types.CallbackQuery):
     params = callback.data.split(":")
@@ -214,7 +208,6 @@ async def regenerate_signal(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "back_to_assets")
 async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
-    # Кнопка назад возвращает пользователя к выбору режима работы (Автомат/Ручной)
     await state.clear()
     await callback.message.edit_text("✅ **Выберите режим работы бота:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤖 Автомат", callback_data="m:auto")],
@@ -227,6 +220,10 @@ async def web_index(request):
     return web.Response(text="Bot is running!")
 
 async def main():
+    # Защита от конфликта: закрываем старые сессии и ждем 3 секунды
+    await bot.session.close()
+    await asyncio.sleep(3)
+    
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(dp.start_polling(bot))
     
