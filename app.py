@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412
+ADMIN_ID = 8273386412 
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
@@ -43,13 +43,13 @@ class FSM(StatesGroup):
     timeframe_selection = State()
     expiration_selection = State()
 
-# --- ИНТЕРФЕЙС СИГНАЛОВ (VLADOS USDT) ---
+# --- ИНТЕРФЕЙС СИГНАЛОВ (УЛУЧШЕННЫЙ АНАЛИЗ) ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
     timestamp = int(time.time() + 300)
     
-    # ФИЛЬТР: Выдаем только "уверенные" сигналы для пользователя
+    # ФИЛЬТР УВЕРЕННОСТИ ДЛЯ УМЕНЬШЕНИЯ "МИНУСОВ"
     text = (
         f"🔥 **VLADOS USDT**\n"
         f"📡 **СИГНАЛ VLADOS USDT: QUANTUM CORE**\n\n"
@@ -87,13 +87,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("lang:"))
 async def select_lang(callback: types.CallbackQuery, state: FSMContext):
+    text = ("📝 **ШАГ 1: РЕГИСТРАЦИЯ**\nОтправьте ваш ID (8 цифр) в этот чат.")
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📈 ПЕРЕЙТИ НА ПЛАТФОРМУ", url="https://u3.shortink.io/register?utm_campaign=848831&utm_source=affiliate&utm_medium=sr&a=U7DMqgf943dAUl&al=1768608&ac=vladik_trading&cid=959248&code=WELCOME50")]])
-    await callback.message.edit_text("📝 **ШАГ 1: РЕГИСТРАЦИЯ**\nОтправьте ваш ID (8 цифр) в этот чат.", reply_markup=kb)
+    await callback.message.edit_text(text, reply_markup=kb)
     await state.set_state(FSM.registration)
 
 @dp.message(FSM.registration)
 async def process_registration(message: types.Message, state: FSMContext):
-    if not message.text.strip().isdigit(): return await message.answer("❌ Только цифры!")
+    if not message.text.strip().isdigit(): return await message.answer("❌ **Только цифры!**")
     admin_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Активировать", callback_data=f"approve:{message.from_user.id}:{message.text.strip()}"), InlineKeyboardButton(text="❌ Отклонить", callback_data=f"deny:{message.from_user.id}")]])
     await bot.send_message(ADMIN_ID, f"🔔 **ЗАПРОС:** @{message.from_user.username}\n🆔 ID: `{message.from_user.id}`\n📊 Платформа: `{message.text.strip()}`", reply_markup=admin_kb)
     await message.answer("⏳ **Запрос отправлен. Ожидайте подтверждения.**")
@@ -110,7 +111,6 @@ async def admin_deny(callback: types.CallbackQuery):
     await bot.send_message(int(callback.data.split(":")[1]), "❌ **Запрос отклонен.**")
     await callback.message.edit_text("❌ ОТКЛОНЕНО")
 
-# --- СИГНАЛЫ (ЛОГИКА) ---
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(callback: types.CallbackQuery):
     text, kb = generate_signal_ui(random.choice(ALL_ASSETS), random.choice(ALL_TIMEFRAMES), random.choice(ALL_EXPIRATIONS))
@@ -118,7 +118,7 @@ async def auto_mode(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "m:man")
 async def manual_mode(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🌍 **Выбор рынка:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Живой", callback_data="market:live"), InlineKeyboardButton(text="OTC", callback_data="market:otc")]]))
+    await callback.message.edit_text("🌍 **Выберите рынок:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Живой", callback_data="market:live"), InlineKeyboardButton(text="OTC", callback_data="market:otc")]]))
     await state.set_state(FSM.market_selection)
 
 @dp.callback_query(F.data.startswith("market:"))
