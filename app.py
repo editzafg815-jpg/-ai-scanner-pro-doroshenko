@@ -13,14 +13,14 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412  # Ваш ID для получения уведомлений о новых ID
+ADMIN_ID = 8273386412  # ID для уведомлений
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# --- БАЗА ДАННЫХ (АКЦИИ ОСТАВЛЕНЫ) ---
+# --- БАЗА ДАННЫХ ---
 LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
 
 OTC_GROUPS = {
@@ -42,7 +42,7 @@ class FSM(StatesGroup):
     expiration_selection = State()
     registration = State()
 
-# --- ЛОГИКА СИГНАЛОВ (ПОЛНОСТЬЮ ПОД VLADOS USDT) ---
+# --- ЛОГИКА СИГНАЛОВ (VLADOS USDT) ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
@@ -129,7 +129,6 @@ async def process_registration(message: types.Message, state: FSMContext):
     )
     await state.set_state(FSM.mode_selection)
 
-# АВТОМАТИЧЕСКИЙ РЕЖИМ (СРЗУ ВЫДАЕТ СИГНАЛ)
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -140,7 +139,6 @@ async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
-# РУЧНОЙ РЕЖИМ
 @dp.callback_query(F.data == "m:man")
 async def manual_mode(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🌍 **Выберите рынок:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -198,7 +196,6 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
-# --- ОБРАБОТЧИКИ КНОПОК ПОД СИГНАЛОМ ---
 @dp.callback_query(F.data.startswith("regen:"))
 async def regenerate_signal(callback: types.CallbackQuery):
     params = callback.data.split(":")
@@ -218,33 +215,28 @@ async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     ]))
     await state.set_state(FSM.mode_selection)
 
-# --- ВЕБ-СЕРВЕР ---
+# --- ИСПРАВЛЕННЫЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ---
 async def web_index(request):
-    return web.Response(text="Bot is running!")
+    return web.Response(text="Bot is perfectly running!")
 
-# --- ЗАПУСК ---
-async def main():
-    # Силовое закрытие старых сессий для устранения ConflictError
-    try:
-        await bot.session.close()
-    except Exception:
-        pass
-    await asyncio.sleep(5) # Пауза, чтобы Telegram успел разорвать старое соединение
-    
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot))
-    
+async def start_web_server():
     app = web.Application()
     app.router.add_get('/', web_index)
-    
-    port = int(os.environ.get("PORT", 8080))
     runner = web.AppRunner(app)
     await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
+
+async def main():
+    # Запуск веб-сервера без блокировки основного event loop
+    await start_web_server()
     
-    while True:
-        await asyncio.sleep(3600)
+    # Сброс вебхука и очистка зависших апдейтов перед стартом
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    # Корректный запуск лонг-поллинга
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
