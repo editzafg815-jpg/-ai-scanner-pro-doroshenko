@@ -2,6 +2,8 @@ import asyncio
 import random
 import os
 import logging
+import time
+from threading import Thread
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -9,25 +11,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.webhook.aiohttp_impl import SimpleRequestHandler, setup_application
 
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412  # ID для уведомлений
-
-# ⚠️ ВСТАВЬ СЮДА СВОЮ ССЫЛКУ С RENDER (БЕЗ СЛЭША НА КОНЦЕ)
-# Например: "https://my-trading-bot.onrender.com"
-RENDER_URL = "https://your-app-name.onrender.com" 
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
+ADMIN_ID = 8273386412  # Твой ID для уведомлений
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# --- БАЗА ДАННЫХ ---
+# --- ТВОИ АКТИВЫ ---
 LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
 
 OTC_GROUPS = {
@@ -41,33 +36,31 @@ ALL_TIMEFRAMES = ["5 сек", "15 сек", "30 сек", "1 мин", "2 мин", 
 ALL_EXPIRATIONS = ["1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
 
 class FSM(StatesGroup):
+    registration = State()
     mode_selection = State()
     market_selection = State()
     category_selection = State()
     asset_selection = State()
     timeframe_selection = State()
     expiration_selection = State()
-    registration = State()
 
-# --- ЛОГИКА СИГНАЛОВ (VLADOS USDT) ---
+# --- ТВОЙ РОДНОЙ ИНТЕРФЕЙС СИГНАЛОВ (TEAM MASTER) ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
-
-    import time
     timestamp = int(time.time() + 300)
     
+    # Текст полностью скопирован с твоего GitHub
     text = (
-        f"🔥 **VLADOS USDT**\n"
-        f"📡 **СИГНАЛ VLADOS USDT: QUANTUM CORE**\n\n"
-        f"🔷 **Актив:** `{asset}`\n"
-        f"⚡️ **Направление:** {dir_icon} {dir_text}\n"
-        f"📊 **ТФ:** `{tf}`\n"
-        f"⏱ **Экспирация:** `{exp}`\n"
-        f"⏳ **Вход до:** `{timestamp}`\n"
-        f"🎯 **Выплата:** `{random.randint(90, 96)}%`\n"
-        f"🔥 **Индекс уверенности:** `{random.randint(93, 98)}%`\n\n"
-        "⚠️ *Соблюдайте правила управления капиталом.*"
+        f"🔷⚡️**СИГНАЛ TEAM MASTER: QUANTUM CORE**⚡️🔷\n"
+        f"🔷**Актив:** {asset}\n"
+        f"🔷**Направление:** {dir_icon} {dir_text}\n"
+        f"🔷**ТФ:** {tf}\n"
+        f"🔷**Экспирация:** {exp}\n"
+        f"🔷**Вход до:** {timestamp}\n"
+        f"🔷**Выплата:** {random.randint(90, 96)}%\n"
+        f"🔥**Индекс уверенности:** {random.randint(93, 98)}%\n"
+        f"⚠️**Соблюдайте правила управления капиталом.**"
     )
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -222,25 +215,29 @@ async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     ]))
     await state.set_state(FSM.mode_selection)
 
-# --- УПРАВЛЕНИЕ ВЕБХУКОМ ---
-async def on_startup(bot: Bot):
-    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
-
+# --- БЕЗОПАСНЫЙ ВЕБ-СЕРВЕР ---
 async def web_index(request):
-    return web.Response(text="Bot Webhook is perfectly running!")
+    return web.Response(text="Web server active.")
 
-def main():
+def run_web_server():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     app = web.Application()
     app.router.add_get('/', web_index)
-    
-    # Регистрация обработчика вебхуков aiogram в aiohttp
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
-    setup_application(app, dp, bot=bot)
-    
-    app.on_startup.append(lambda _: on_startup(bot))
-    
     port = int(os.environ.get("PORT", 8080))
-    web.run_app(app, host='0.0.0.0', port=port)
+    web.run_app(app, host='0.0.0.0', port=port, loop=loop, handle_signals=False)
+
+# --- ОСНОВНОЙ ЗАПУСК ---
+async def main():
+    # Запуск проверки для Render в отдельном потоке
+    server_thread = Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    # Сброс старых сессий, чтобы гарантированно убрать ConflictError
+    await bot.delete_webhook(drop_pending_updates=True)
+    
+    logging.info("Бот TEAM MASTER успешно запущен!")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
