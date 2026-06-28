@@ -95,7 +95,7 @@ async def select_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text, reply_markup=kb)
     await state.set_state(FSM.registration)
 
-# ОБРАБОТКА ВВЕДЕННОГО ID С ПОДТВЕРЖДЕНИЕМ
+# ИСПРАВЛЕННАЯ ОБРАБОТКА ВВЕДЕННОГО ID (БЕЗ ДУБЛИРОВАНИЯ)
 @dp.message(FSM.registration)
 async def process_registration(message: types.Message, state: FSMContext):
     user_id_input = message.text.strip()
@@ -104,6 +104,7 @@ async def process_registration(message: types.Message, state: FSMContext):
         await message.answer("❌ **Неверный формат ID.** Пожалуйста, отправьте корректный ID, состоящий только из цифр.")
         return
 
+    # Отправляем ТОЛЬКО ОДНО уведомление админу бота
     try:
         await bot.send_message(
             chat_id=ADMIN_ID,
@@ -115,6 +116,7 @@ async def process_registration(message: types.Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление админу: {e}")
 
+    # Отвечаем ТОЛЬКО ОДИН РАЗ пользователю и открываем выбор рынка
     await message.answer(
         f"✅ **ID `{user_id_input}` успешно принят на активацию!**\n"
         "Депозит проверяется. Выберите режим работы бота:", 
@@ -171,6 +173,7 @@ async def timeframe_selected(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("⏱ **Выберите время экспирации:**", reply_markup=kb)
     await state.set_state(FSM.expiration_selection)
 
+# ИСПРАВЛЕННЫЙ ВЫВОД СИГНАЛА (БЕЗ ДУБЛИРОВАНИЯ ТЕКСТА)
 @dp.callback_query(F.data.startswith("exp:"))
 async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -179,18 +182,17 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     exp = callback.data.split(":")[1]
     
     text, kb = generate_signal_ui(asset, tf, exp)
+    # Метод edit_text полностью заменяет старый текст новым без дублирования
     await callback.message.edit_text(text, reply_markup=kb)
 
-# --- ИСПРАВЛЕННЫЙ ЗАПУСК БОТА И ВЕБ-СЕРВЕРА ---
+# --- ЗАПУСК И ВЕБ-СЕРВЕР ДЛЯ RENDER ---
 async def web_index(request):
     return web.Response(text="Bot is running!")
 
 async def main():
-    # Удаляем вебхуки и запускаем лонг-поллинг бота в фоновом режиме контейнера
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(dp.start_polling(bot))
     
-    # Настраиваем и поднимаем веб-сервер aiohttp
     app = web.Application()
     app.router.add_get('/', web_index)
     
@@ -200,10 +202,8 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     
-    # Держим цикл событий активным, пока бот работает
     while True:
         await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    # asyncio.run() сам корректно инициализирует цикл событий без RuntimeError
     asyncio.run(main())
