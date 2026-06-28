@@ -20,7 +20,7 @@ bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# --- БАЗА ДАННЫХ ---
+# --- БАЗА ДАННЫХ (АКЦИИ ОСТАВЛЕНЫ) ---
 LIVE = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD", "USD/CHF", "AUD/USD", "NZD/USD", "EUR/JPY", "GBP/JPY", "AUD/CAD", "EUR/AUD", "EUR/CAD", "CAD/CHF"]
 
 OTC_GROUPS = {
@@ -42,7 +42,7 @@ class FSM(StatesGroup):
     expiration_selection = State()
     registration = State()
 
-# --- ЛОГИКА СИГНАЛОВ ---
+# --- ЛОГИКА СИГНАЛОВ (ПОЛНОСТЬЮ ПОД VLADOS USDT) ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
@@ -129,6 +129,7 @@ async def process_registration(message: types.Message, state: FSMContext):
     )
     await state.set_state(FSM.mode_selection)
 
+# АВТОМАТИЧЕСКИЙ РЕЖИМ (СРЗУ ВЫДАЕТ СИГНАЛ)
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -139,6 +140,7 @@ async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
+# РУЧНОЙ РЕЖИМ
 @dp.callback_query(F.data == "m:man")
 async def manual_mode(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🌍 **Выберите рынок:**", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -196,6 +198,7 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     text, kb = generate_signal_ui(asset, tf, exp)
     await callback.message.edit_text(text, reply_markup=kb)
 
+# --- ОБРАБОТЧИКИ КНОПОК ПОД СИГНАЛОМ ---
 @dp.callback_query(F.data.startswith("regen:"))
 async def regenerate_signal(callback: types.CallbackQuery):
     params = callback.data.split(":")
@@ -215,14 +218,18 @@ async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     ]))
     await state.set_state(FSM.mode_selection)
 
-# --- ЗАПУСК И ВЕБ-СЕРВЕР ДЛЯ RENDER ---
+# --- ВЕБ-СЕРВЕР ---
 async def web_index(request):
     return web.Response(text="Bot is running!")
 
+# --- ЗАПУСК ---
 async def main():
-    # Защита от конфликта: закрываем старые сессии и ждем 3 секунды
-    await bot.session.close()
-    await asyncio.sleep(3)
+    # Силовое закрытие старых сессий для устранения ConflictError
+    try:
+        await bot.session.close()
+    except Exception:
+        pass
+    await asyncio.sleep(5) # Пауза, чтобы Telegram успел разорвать старое соединение
     
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(dp.start_polling(bot))
