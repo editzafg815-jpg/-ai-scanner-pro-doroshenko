@@ -95,7 +95,7 @@ async def select_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text, reply_markup=kb)
     await state.set_state(FSM.registration)
 
-# ИСПРАВЛЕННАЯ ОБРАБОТКА ВВЕДЕННОГО ID (БЕЗ ДУБЛИРОВАНИЯ)
+# ОБРАБОТКА ВВЕДЕННОГО ID С ПОДТВЕРЖДЕНИЕМ
 @dp.message(FSM.registration)
 async def process_registration(message: types.Message, state: FSMContext):
     user_id_input = message.text.strip()
@@ -104,7 +104,6 @@ async def process_registration(message: types.Message, state: FSMContext):
         await message.answer("❌ **Неверный формат ID.** Пожалуйста, отправьте корректный ID, состоящий только из цифр.")
         return
 
-    # Отправляем ТОЛЬКО ОДНО уведомление админу бота
     try:
         await bot.send_message(
             chat_id=ADMIN_ID,
@@ -116,7 +115,6 @@ async def process_registration(message: types.Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление админу: {e}")
 
-    # Отвечаем ТОЛЬКО ОДИН РАЗ пользователю и открываем выбор рынка
     await message.answer(
         f"✅ **ID `{user_id_input}` успешно принят на активацию!**\n"
         "Депозит проверяется. Выберите режим работы бота:", 
@@ -126,6 +124,12 @@ async def process_registration(message: types.Message, state: FSMContext):
         ])
     )
     await state.set_state(FSM.mode_selection)
+
+@dp.callback_query(F.data == "m:auto")
+async def auto_mode(callback: types.CallbackQuery, state: FSMContext):
+    # Заглушка автоматического режима, переводящая пользователя на выбор рынка
+    await callback.message.answer("🤖 Автоматический режим активирован.")
+    await manual_mode(callback, state)
 
 @dp.callback_query(F.data == "m:man")
 async def manual_mode(callback: types.CallbackQuery, state: FSMContext):
@@ -173,7 +177,6 @@ async def timeframe_selected(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("⏱ **Выберите время экспирации:**", reply_markup=kb)
     await state.set_state(FSM.expiration_selection)
 
-# ИСПРАВЛЕННЫЙ ВЫВОД СИГНАЛА (БЕЗ ДУБЛИРОВАНИЯ ТЕКСТА)
 @dp.callback_query(F.data.startswith("exp:"))
 async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -182,8 +185,26 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
     exp = callback.data.split(":")[1]
     
     text, kb = generate_signal_ui(asset, tf, exp)
-    # Метод edit_text полностью заменяет старый текст новым без дублирования
     await callback.message.edit_text(text, reply_markup=kb)
+
+# --- ДОБАВЛЕННЫЕ ОБРАБОТЧИКИ ДЛЯ КНОПОК ПОД СИГНАЛОМ ---
+
+# 1. Кнопка "Сгенерировать новый"
+@dp.callback_query(F.data.startswith("regen:"))
+async def regenerate_signal(callback: types.CallbackQuery):
+    params = callback.data.split(":")
+    asset = params[1]
+    tf = params[2]
+    exp = params[3]
+    
+    text, kb = generate_signal_ui(asset, tf, exp)
+    await callback.message.edit_text(text, reply_markup=kb)
+
+# 2. Кнопка "Меню активов" (Возврат к началу выбора рынка)
+@dp.callback_query(F.data == "back_to_assets")
+async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
+    await manual_mode(callback, state)
+
 
 # --- ЗАПУСК И ВЕБ-СЕРВЕР ДЛЯ RENDER ---
 async def web_index(request):
