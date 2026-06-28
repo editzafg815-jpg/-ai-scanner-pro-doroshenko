@@ -15,7 +15,6 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
@@ -34,8 +33,6 @@ ALL_TIMEFRAMES = ["5 сек", "15 сек", "30 сек", "1 мин", "2 мин", 
 ALL_EXPIRATIONS = ["1 мин", "2 мин", "3 мин", "4 мин", "5 мин"]
 
 class FSM(StatesGroup):
-    registration = State()
-    wait_approval = State()
     mode_selection = State()
     market_selection = State()
     category_selection = State()
@@ -43,7 +40,7 @@ class FSM(StatesGroup):
     timeframe_selection = State()
     expiration_selection = State()
 
-# --- ЛОГИКА СИГНАЛОВ (УЛУЧШЕНА) ---
+# --- ИНТЕРФЕЙС СИГНАЛОВ ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
@@ -51,14 +48,17 @@ def generate_signal_ui(asset, tf, exp):
     
     text = (
         f"🔥 **VLADOS USDT**\n📡 **СИГНАЛ VLADOS USDT: QUANTUM CORE**\n\n"
-        f"🔷 **Актив:** `{asset}`\n⚡️ **Направление:** {dir_icon} {dir_text}\n"
-        f"📊 **ТФ:** `{tf}`\n⏱ **Экспирация:** `{exp}`\n"
+        f"🔷 **Актив:** `{asset}`\n"
+        f"⚡️ **Направление:** {dir_icon} {dir_text}\n"
+        f"📊 **ТФ:** `{tf}`\n"
+        f"⏱ **Экспирация:** `{exp}`\n"
         f"⏳ **Вход до:** `{timestamp}`\n"
         f"🎯 **Выплата:** `{random.randint(95, 98)}%`\n"
         f"🔥 **Индекс уверенности:** `{random.randint(97, 99)}%`\n\n"
         "✅ *Сигнал прошел глубокий анализ алгоритмов.*\n"
         "⚠️ *Соблюдайте правила управления капиталом.*"
     )
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Сгенерировать новый", callback_data=f"regen:{asset}:{tf}:{exp}")],
         [InlineKeyboardButton(text="🔙 Меню активов", callback_data="back_to_assets")]
@@ -73,39 +73,8 @@ def get_main_menu_kb():
 
 # --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🇷🇺 RU", callback_data="lang:ru"), InlineKeyboardButton(text="🇺🇸 EN", callback_data="lang:en")],
-        [InlineKeyboardButton(text="🇺🇦 UA", callback_data="lang:ua"), InlineKeyboardButton(text="🇩🇪 DE", callback_data="lang:de")]
-    ])
-    await message.answer("🌐 **Выберите язык / Select Language:**", reply_markup=kb)
-
-@dp.callback_query(F.data.startswith("lang:"))
-async def select_lang(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("📝 **ШАГ 1: РЕГИСТРАЦИЯ В СИСТЕМЕ**\n\nПосле завершения регистрации, скопируйте ваш ID (8 цифр) и отправьте его сюда.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📈 ПЕРЕЙТИ НА ПЛАТФОРМУ", url="https://u3.shortink.io/register?utm_campaign=848831&utm_source=affiliate&utm_medium=sr&a=U7DMqgf943dAUl&al=1768608&ac=vladik_trading&cid=959248&code=WELCOME50")]]))
-    await state.set_state(FSM.registration)
-
-@dp.message(FSM.registration)
-async def process_registration(message: types.Message, state: FSMContext):
-    if not message.text.strip().isdigit():
-        await message.answer("❌ **Неверный формат ID.** Только цифры.")
-        return
-    admin_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Активировать", callback_data=f"approve:{message.from_user.id}:{message.text.strip()}"), InlineKeyboardButton(text="❌ Отклонить", callback_data=f"deny:{message.from_user.id}")]])
-    await bot.send_message(ADMIN_ID, f"🔔 **ЗАПРОС:** @{message.from_user.username}\n🆔 ID: `{message.from_user.id}`\n📊 Платформа: `{message.text.strip()}`", reply_markup=admin_kb)
-    await message.answer("⏳ **Ваш ID отправлен на проверку.** Дождитесь активации.")
-    await state.set_state(FSM.wait_approval)
-
-@dp.callback_query(F.data.startswith("approve:"))
-async def admin_approve(callback: types.CallbackQuery):
-    _, user_tg_id, platform_id = callback.data.split(":")
-    await bot.send_message(int(user_tg_id), f"🎉 **Ваш аккаунт (ID: {platform_id}) активирован!**", reply_markup=get_main_menu_kb())
-    await callback.message.edit_text(f"✅ Пользователь `{user_tg_id}` **ОДОБРЕН**.")
-
-@dp.callback_query(F.data.startswith("deny:"))
-async def admin_deny(callback: types.CallbackQuery):
-    await bot.send_message(int(callback.data.split(":")[1]), "❌ **Запрос отклонен.**")
-    await callback.message.edit_text("❌ Пользователь **ОТКЛОНЕН**.")
+async def cmd_start(message: types.Message):
+    await message.answer("✅ **Добро пожаловать в VLADOS USDT!**\nВыберите режим работы:", reply_markup=get_main_menu_kb())
 
 @dp.callback_query(F.data == "m:auto")
 async def auto_mode(callback: types.CallbackQuery):
@@ -137,9 +106,10 @@ async def market_selected(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("otc:"))
 async def otc_category_selected(callback: types.CallbackQuery, state: FSMContext):
-    assets = OTC_GROUPS.get(callback.data.split(":")[1], [])
+    category = callback.data.split(":")[1]
+    assets = OTC_GROUPS.get(category, [])
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=a, callback_data=f"a:{a}")] for a in assets])
-    await callback.message.edit_text("🔹 **Выберите актив:**", reply_markup=kb)
+    await callback.message.edit_text("🔹 **Выберите OTC актив:**", reply_markup=kb)
     await state.set_state(FSM.asset_selection)
 
 @dp.callback_query(F.data.startswith("a:"))
@@ -165,8 +135,7 @@ async def show_final_signal(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "back_to_assets")
 async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("✅ **Выберите режим работы бота:**", reply_markup=get_main_menu_kb())
-    await state.set_state(FSM.mode_selection)
+    await callback.message.edit_text("✅ **Главное меню:**", reply_markup=get_main_menu_kb())
 
 @dp.callback_query(F.data.startswith("regen:"))
 async def regenerate_signal(callback: types.CallbackQuery):
@@ -178,10 +147,11 @@ async def regenerate_signal(callback: types.CallbackQuery):
 async def main():
     def run_web():
         app = web.Application()
-        app.router.add_get('/', lambda r: web.Response(text="Bot is running"))
+        app.router.add_get('/', lambda r: web.Response(text="Bot active"))
         web.run_app(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080)), handle_signals=False)
     Thread(target=run_web, daemon=True).start()
-
+    
+    # Жесткая очистка для борьбы с конфликтом
     await bot.delete_webhook(drop_pending_updates=True)
     await asyncio.sleep(2)
     await dp.start_polling(bot)
