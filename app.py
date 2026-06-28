@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --- НАСТРОЙКИ ---
 logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8836797898:AAHhtUHiRWoYmsFJ16ur4-UxkgKkB5rwJnw"
-ADMIN_ID = 8273386412  # Твой ID для уведомлений
+ADMIN_ID = 8273386412  # ID админа для уведомлений
 
 # --- ИНИЦИАЛИЗАЦИЯ ---
 bot = Bot(token=BOT_TOKEN)
@@ -44,23 +44,23 @@ class FSM(StatesGroup):
     timeframe_selection = State()
     expiration_selection = State()
 
-# --- ТВОЙ РОДНОЙ ИНТЕРФЕЙС СИГНАЛОВ (TEAM MASTER) ---
+# --- ТВОЙ ИНТЕРФЕЙС СИГНАЛОВ (VLADOS USDT) ---
 def generate_signal_ui(asset, tf, exp):
     directions = [("🟢 BUY / ВВЕРХ", "📈"), ("🔴 SELL / ВНИЗ", "📉")]
     dir_text, dir_icon = random.choice(directions)
     timestamp = int(time.time() + 300)
     
-    # Текст полностью скопирован с твоего GitHub
     text = (
-        f"🔷⚡️**СИГНАЛ TEAM MASTER: QUANTUM CORE**⚡️🔷\n"
-        f"🔷**Актив:** {asset}\n"
-        f"🔷**Направление:** {dir_icon} {dir_text}\n"
-        f"🔷**ТФ:** {tf}\n"
-        f"🔷**Экспирация:** {exp}\n"
-        f"🔷**Вход до:** {timestamp}\n"
-        f"🔷**Выплата:** {random.randint(90, 96)}%\n"
-        f"🔥**Индекс уверенности:** {random.randint(93, 98)}%\n"
-        f"⚠️**Соблюдайте правила управления капиталом.**"
+        f"🔥 **VLADOS USDT**\n"
+        f"📡 **СИГНАЛ VLADOS USDT: QUANTUM CORE**\n\n"
+        f"🔷 **Актив:** `{asset}`\n"
+        f"⚡️ **Направление:** {dir_icon} {dir_text}\n"
+        f"📊 **ТФ:** `{tf}`\n"
+        f"⏱ **Экспирация:** `{exp}`\n"
+        f"⏳ **Вход до:** `{timestamp}`\n"
+        f"🎯 **Выплата:** `{random.randint(90, 96)}%`\n"
+        f"🔥 **Индекс уверенности:** `{random.randint(93, 98)}%`\n\n"
+        "⚠️ *Соблюдайте правила управления капиталом.*"
     )
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -215,7 +215,7 @@ async def back_to_assets(callback: types.CallbackQuery, state: FSMContext):
     ]))
     await state.set_state(FSM.mode_selection)
 
-# --- БЕЗОПАСНЫЙ ВЕБ-СЕРВЕР ---
+# --- ИЗОЛИРОВАННЫЙ СЕРВЕР ДЛЯ ОБХОДА ОШИБОК RENDER ---
 async def web_index(request):
     return web.Response(text="Web server active.")
 
@@ -229,14 +229,14 @@ def run_web_server():
 
 # --- ОСНОВНОЙ ЗАПУСК ---
 async def main():
-    # Запуск проверки для Render в отдельном потоке
+    # Запуск фейк-сервера проверки Render в отдельном изолированном потоке
     server_thread = Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    # Сброс старых сессий, чтобы гарантированно убрать ConflictError
+    # Сброс старых сессий, вебхуков и зависших апдейтов перед стартом polling
     await bot.delete_webhook(drop_pending_updates=True)
     
-    logging.info("Бот TEAM MASTER успешно запущен!")
+    logging.info("Бот VLADOS USDT успешно запущен без конфликтов!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
