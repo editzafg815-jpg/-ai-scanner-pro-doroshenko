@@ -1,15 +1,27 @@
 import asyncio
 import random
+import threading
 from datetime import datetime, timedelta
+from flask import Flask
 from aiogram import Bot, Dispatcher
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from os import getenv
 
-# Инициализация
+# Инициализация бота
 TOKEN = getenv("BOT_TOKEN")
 CHANNEL_ID = -1004377135973
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# Flask для открытия порта (чтобы Render не выдавал ошибку)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
 
 # Список активов
 PAIRS = ["AUD/USD OTC", "CAD/CHF OTC", "EUR/GBP OTC", "EUR/USD OTC", 
@@ -71,4 +83,7 @@ async def main():
         await asyncio.sleep(120)
 
 if __name__ == "__main__":
+    # Запуск Flask в отдельном потоке
+    threading.Thread(target=run_flask).start()
+    # Запуск бота
     asyncio.run(main())
