@@ -1,82 +1,74 @@
 import asyncio
-import os
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.filters import Command
-from aiohttp import web
+import random
+from datetime import datetime, timedelta
+from aiogram import Bot, Dispatcher
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from os import getenv
 
-# Берем токен из Environment Variables
-TOKEN = os.getenv("BOT_TOKEN")
+# Инициализация
+TOKEN = getenv("BOT_TOKEN")
+CHANNEL_ID = -1004377135973
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-DEV_BUTTON = [InlineKeyboardButton(text="👨‍💻 Разработчик", url="https://t.me/andriddddd")]
+# Список активов
+PAIRS = ["AUD/USD OTC", "CAD/CHF OTC", "EUR/GBP OTC", "EUR/USD OTC", 
+         "USD/JPY OTC", "Bitcoin OTC", "Tesla OTC", "Apple OTC", "Amazon OTC"]
 
-# --- ФУНКЦИЯ ОТПРАВКИ СИГНАЛА ---
-async def send_signal(chat_id, pair, direction, timeframe, expiration):
+# Клавиатура с кнопкой поддержки
+def get_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📞 Поддержка/Разработчик", url="https://t.me/andriddddd")]
+    ])
+
+async def send_signal():
+    asset = random.choice(PAIRS)
+    confidence = random.randint(88, 97)
+    
+    # Расчет времени
+    now = datetime.now().strftime("%H:%M")
+    expiry_time = (datetime.now() + timedelta(minutes=1)).strftime("%H:%M")
+    
+    # Логика направления
+    if "USD" in asset or "Bitcoin" in asset:
+        direction_text = "ВВЕРХ (CALL) 🟢"
+    else:
+        direction_text = "ВНИЗ (PUT) 🔴"
+        
+    # Формируем текст сигнала
     text = (
-        f"🔔 **Новый сигнал!**\n"
-        f"📊 Пара: {pair}\n"
-        f"📈 Направление: {direction}\n"
-        f"⏱ Таймфрейм: {timeframe}\n"
-        f"⏳ Время сделки: {expiration} мин.\n"
-        f"🚀 Заходим!"
+        f"👑 **СИГНАЛ МАСТЕРА** 👑\n\n"
+        f"💵 Актив: {asset}\n"
+        f"⏰ Время входа: {now}\n"
+        f"⌛ Экспирация: 1 минута (до {expiry_time})\n"
+        f"🎯 Прогноз: {direction_text}\n"
+        f"📈 Уверенность: {confidence}%\n\n"
+        f"💡 Совет: Соблюдайте ММ. Не ставьте весь банк."
     )
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Плюс", callback_data="res_plus"),
-         InlineKeyboardButton(text="❌ Минус", callback_data="res_minus")],
-        DEV_BUTTON
-    ])
+    # Отправляем сигнал
+    await bot.send_message(
+        chat_id=CHANNEL_ID, 
+        text=text, 
+        reply_markup=get_keyboard(), 
+        parse_mode="Markdown"
+    )
     
-    msg = await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
-    
+    # Ждем 1 минуту (время экспирации)
     await asyncio.sleep(60)
     
-    try:
-        updated_text = text + "\n\n🏁 **ИТОГ: Ожидаем...**"
-        await msg.edit_text(text=updated_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[DEV_BUTTON]))
-    except:
-        pass
-
-@dp.callback_query(F.data.startswith("res_"))
-async def process_result(callback: CallbackQuery):
-    result = "✅ ПЛЮС" if callback.data == "res_plus" else "❌ МИНУС"
+    # Результат (65% проходимость)
+    result_text = "WIN ✅" if random.randint(1, 100) <= 65 else "LOSS ❌"
     
-    if "ИТОГ" not in callback.message.text:
-        new_text = callback.message.text + f"\n\n🏁 **ИТОГ: {result}**"
-    else:
-        new_text = callback.message.text.replace("Ожидаем...", result)
-    
-    await callback.message.edit_text(text=new_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[DEV_BUTTON]))
-    await callback.answer(f"Результат: {result}")
-
-@dp.message(Command("signal"))
-async def cmd_signal(message: Message):
-    args = message.text.split()
-    if len(args) == 5:
-        await send_signal(message.chat.id, args[1], args[2], args[3], args[4])
-
-# --- ЗАГЛУШКА ДЛЯ ПОРТА ---
-async def health_check(request):
-    return web.Response(text="Bot is running")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get('PORT', 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
+    # Отправляем результат отдельным сообщением
+    await bot.send_message(chat_id=CHANNEL_ID, text=result_text)
 
 async def main():
-    # Сбрасываем старые апдейты, чтобы не было конфликта
-    await bot.delete_webhook(drop_pending_updates=True)
-    # Запускаем заглушку порта
-    await start_web_server()
-    print("Бот и сервер запущены...")
-    await dp.start_polling(bot)
+    # Бесконечный цикл
+    while True:
+        await send_signal()
+        # Пауза 2 минуты перед следующим сигналом
+        await asyncio.sleep(120)
 
 if __name__ == "__main__":
     asyncio.run(main())
