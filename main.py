@@ -1,65 +1,72 @@
 import asyncio
-import random
-from aiogram import Bot, Dispatcher
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from os import getenv
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.filters import Command
 
-# Инициализация
-TOKEN = getenv("BOT_TOKEN")
-CHANNEL_ID = -1004377135973
+# Вставь сюда токен своего бота
+TOKEN = "8991928353:AAHxI-JFxVQ5fs2vpjHZVDjG8kQFYPBs_qo"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Список твоих пар
-PAIRS = ["AUD/USD OTC", "CAD/CHF OTC", "EUR/GBP OTC", "EUR/USD OTC", 
-         "USD/JPY OTC", "Bitcoin OTC", "Tesla OTC", "Apple OTC", "Amazon OTC"]
+# Кнопка разработчика (константа)
+DEV_BUTTON = [InlineKeyboardButton(text="👨‍💻 Разработчик", url="https://t.me/andriddddd")]
 
-def get_keyboard():
-    # Кнопки CALL/PUT убраны, осталась только Поддержка
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📞 Поддержка/Разработчик", url="https://t.me/andriddddd")]
-    ])
-
-async def send_signal():
-    asset = random.choice(PAIRS)
-    confidence = random.randint(88, 97)
-    
-    # Логика "псевдо-анализа" (привязка к активу, чтобы не было чистого рандома)
-    if "USD" in asset or "Bitcoin" in asset:
-        direction_text = "ВВЕРХ (CALL) 🟢"
-    else:
-        direction_text = "ВНИЗ (PUT) 🔴"
-        
-    # Формируем сообщение
+# --- ФУНКЦИЯ ОТПРАВКИ СИГНАЛА ---
+async def send_signal(chat_id, pair, direction, timeframe, expiration):
     text = (
-        f"👑 **СИГНАЛ МАСТЕРА** 👑\n\n"
-        f"💵 Актив: {asset}\n"
-        f"🕯 Интервал: 1 минута\n"
-        f"🎯 Прогноз: {direction_text}\n"
-        f"📈 Уверенность: {confidence}%\n\n"
-        f"💡 Совет: Соблюдайте ММ. Не ставьте весь банк."
+        f"🔔 **Новый сигнал!**\n"
+        f"📊 Пара: {pair}\n"
+        f"📈 Направление: {direction}\n"
+        f"⏱ Таймфрейм: {timeframe}\n"
+        f"⏳ Время сделки: {expiration} мин.\n"
+        f"🚀 Заходим!"
     )
     
-    msg = await bot.send_message(chat_id=CHANNEL_ID, text=text, reply_markup=get_keyboard(), parse_mode="Markdown")
+    # Кнопки при отправке: Плюс/Минус и Разработчик
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Плюс", callback_data="res_plus"),
+         InlineKeyboardButton(text="❌ Минус", callback_data="res_minus")],
+        DEV_BUTTON
+    ])
     
-    # Экспирация 1 минута
+    msg = await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+    
+    # Ждем 60 секунд для автоматического обновления статуса
     await asyncio.sleep(60)
     
-    # Результат с "проходимостью" 65%
-    result = "WIN ✅" if random.randint(1, 100) <= 65 else "LOSS ❌"
+    # Обновляем текст сообщения, добавляя место для итога
+    try:
+        updated_text = text + "\n\n🏁 **ИТОГ: Ожидаем...**"
+        await msg.edit_text(text=updated_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[DEV_BUTTON]))
+    except:
+        pass # Если пользователь уже нажал кнопку, редактирование пропустим
+
+# --- ОБРАБОТЧИК КНОПОК ИТОГА ---
+@dp.callback_query(F.data.startswith("res_"))
+async def process_result(callback: CallbackQuery):
+    result = "✅ ПЛЮС" if callback.data == "res_plus" else "❌ МИНУС"
     
-    await bot.edit_message_text(
-        chat_id=CHANNEL_ID,
-        message_id=msg.message_id,
-        text=f"{text}\n\nРезультат: {result}",
-        parse_mode="Markdown"
-    )
+    # Заменяем "Ожидаем..." на реальный результат
+    # Если минута еще не прошла, просто добавляем итог
+    if "ИТОГ" not in callback.message.text:
+        new_text = callback.message.text + f"\n\n🏁 **ИТОГ: {result}**"
+    else:
+        new_text = callback.message.text.replace("Ожидаем...", result)
+    
+    await callback.message.edit_text(text=new_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[DEV_BUTTON]))
+    await callback.answer(f"Результат: {result}")
+
+# --- КОМАНДА ДЛЯ ТЕСТА ---
+@dp.message(Command("signal"))
+async def cmd_signal(message: Message):
+    # Пример вызова: /signal EURUSD ВВЕРХ 1 3
+    args = message.text.split()
+    if len(args) == 5:
+        await send_signal(message.chat.id, args[1], args[2], args[3], args[4])
 
 async def main():
-    while True:
-        await send_signal()
-        # Ждем 2 минуты до начала нового цикла (всего 3 минуты)
-        await asyncio.sleep(120)
+    print("Бот запущен...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
