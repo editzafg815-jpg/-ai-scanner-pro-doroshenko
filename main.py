@@ -1,10 +1,12 @@
 import asyncio
+import os
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command
+from aiohttp import web
 
-# Вставь сюда токен своего бота
-TOKEN = "8991928353:AAHxI-JFxVQ5fs2vpjHZVDjG8kQFYPBs_qo"
+# Берем токен из переменных окружения (в настройках Render добавь BOT_TOKEN)
+TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -64,8 +66,24 @@ async def cmd_signal(message: Message):
     if len(args) == 5:
         await send_signal(message.chat.id, args[1], args[2], args[3], args[4])
 
+# --- ЗАГЛУШКА ДЛЯ ПОРТА (ДЛЯ RENDER) ---
+async def health_check(request):
+    return web.Response(text="Bot is running")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get('PORT', 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Веб-сервер запущен на порту {port}")
+
 async def main():
     print("Бот запущен...")
+    # Запускаем заглушку порта перед ботом
+    await start_web_server()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
