@@ -1,11 +1,13 @@
 import asyncio
 import hashlib
 import logging
+import os
 import random
 import aiohttp
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiohttp import web
 
 # ==========================================
 # 1. ТОКЕНЫ И НАСТРОЙКИ
@@ -13,7 +15,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 MAIN_BOT_TOKEN = "8997484099:AAFrwNIPoueThohkYOYV5F8k2fhpyp6yhlw"   # Бот сигналов (для учеников)
 ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  # Админ-бот (для банов)
 
-ADMIN_TELEGRAM_ID = 123456789  # ⚠️ Вставь сюда свой Telegram ID (напиши /id своему админ-боту)
+# Твой Telegram ID (Пропускает без проверок)
+ADMIN_TELEGRAM_ID = 109386966
 
 PARTNER_ID = "850173"
 PARTNER_API_TOKEN = "Zc4X9zu0EMrqbPuLy3tN"
@@ -29,7 +32,7 @@ BANNED_USERS = set()
 USER_PO_IDS = {}
 
 # ==========================================
-# 2. ПОЛНЫЙ СПИСОК ВСЕХ АКТИВОВ (3 В РЯД)
+# 2. СПИСОК ВСЕХ АКТИВОВ (3 В РЯД)
 # ==========================================
 FOREX_OTC = [
     "AUD/NZD OTC", "CAD/JPY OTC", "GBP/USD OTC", "NZD/USD OTC", "SAR/CNY OTC",
@@ -95,7 +98,7 @@ async def check_ban_middleware(handler, event, data):
     return await handler(event, data)
 
 # ==========================================
-# 4. ПРОВЕРКА В ПАРТНЕРКЕ (РЕГИСТРАЦИЯ + ДЕПОЗИТ $10+)
+# 4. ПРОВЕРКА В ПАРТНЕРКЕ
 # ==========================================
 async def verify_trader_id_and_deposit(po_user_id: str) -> tuple[bool, str, float]:
     raw_hash_str = f"{po_user_id}:{PARTNER_ID}:{PARTNER_API_TOKEN}"
@@ -108,7 +111,6 @@ async def verify_trader_id_and_deposit(po_user_id: str) -> tuple[bool, str, floa
                 if response.status == 200:
                     data = await response.json()
                     if data and not data.get("error"):
-                        # Проверяем сумму депозитов
                         ftd_amount = float(data.get("ftd_sum", 0) or data.get("deposit_sum", 0) or 0)
                         if ftd_amount >= 10.0:
                             return True, "Успешно", ftd_amount
@@ -116,22 +118,22 @@ async def verify_trader_id_and_deposit(po_user_id: str) -> tuple[bool, str, floa
                             return False, f"Минимальный депозит для работы с ИИ должен быть от **$10**. Ваш текущий депозит: **${ftd_amount}**.", ftd_amount
                         else:
                             return False, "Аккаунт найден, но **счет еще не пополнен**. Пополните баланс минимум на **$10**.", 0.0
-                    return False, "ID не найден в списке наших учеников. Убедитесь, что зарегистрировались строго по ссылке.", 0.0
-                return False, f"Ошибка сервера партнерки ({response.status})", 0.0
+                    return False, "ID не найден в списке учеников.", 0.0
+                else:
+                    return False, "ID не зарегистрирован по нашей партнерской ссылке.", 0.0
     except Exception as e:
         logging.error(f"API Error: {e}")
-        # Авто-пропуск в случае сбоя сети партнерки
-        return True, "Успешно (авто)", 10.0
+        return False, "Ошибка связи с сервером.", 0.0
 
 # ==========================================
-# 5. ОСНОВНОЙ БОТ (ДЛЯ УЧЕНИКОВ)
+# 5. ХЕНДЛЕРЫ ОСНОВНОГО БОТА (ДЛЯ УЧЕНИКОВ)
 # ==========================================
 @dp_main.message(Command("start"))
 async def cmd_start(message: types.Message):
     kb = InlineKeyboardBuilder()
     kb.button(text="🇷🇺 Русский", callback_data="lang_ru")
     kb.button(text="🇬🇧 English", callback_data="lang_en")
-    kb.button(text="🇺🇦 Українська", callback_data="lang_ua")
+    kb.button(text="🇺АК Украинский", callback_data="lang_ua")
     kb.adjust(3)
 
     text = (
@@ -148,25 +150,20 @@ async def cmd_start(message: types.Message):
 async def process_lang(call: types.CallbackQuery):
     kb = InlineKeyboardBuilder()
     kb.button(text="🔗 1. ЗАРЕГИСТРИРОВАТЬСЯ В POCKET OPTION", url=REF_LINK)
-    kb.button(text="🔄 Проверить регистрацию снова", callback_data="recheck_id")
     kb.adjust(1)
     
     text = (
         "📍 **ШАГ 1: РЕГИСТРАЦИЯ ТОРГОВОГО АККАУНТА**\n\n"
         "❓ **Зачем нужна регистрация по нашей ссылке?**\n"
-        "1. **Синхронизация с ИИ:** Наш сервер подключается к торговым котировкам именно твоего брокерского счета через API Pocket Option.\n"
-        "2. **Бесплатный доступ:** Мы даем сигналы бесплатно благодаря партнерскому соглашению с платформой.\n"
-        "3. **Защита от спама:** Доступ открывается только реальным трейдерам нашей команды.\n\n"
+        "1. **Синхронизация с ИИ:** Наш сервер подключается к котировкам твоего аккаунта.\n"
+        "2. **Бесплатный доступ:** Бесплатные сигналы по партнерскому соглашению.\n"
+        "3. **Защита от спама:** Доступ открывается только реальным ученикам.\n\n"
         "👇 **Инструкция:**\n"
         "1. Нажмите кнопку ниже и создайте новый аккаунт.\n"
-        "2. Скопируйте свой **ID** из личного кабинета Pocket Option.\n"
+        "2. Скопируйте ваш **ID** из личного кабинета.\n"
         "3. **Отправьте ваш ID сплошным числом прямо в этот чат!**"
     )
     await call.message.edit_text(text, reply_markup=kb.as_markup(), parse_mode="Markdown")
-
-@dp_main.callback_query(F.data == "recheck_id")
-async def recheck_id_prompt(call: types.CallbackQuery):
-    await call.answer("Отправьте ваш ID Pocket Option числом в чат!", show_alert=True)
 
 @dp_main.message(F.text.isdigit())
 async def process_id(message: types.Message):
@@ -174,13 +171,30 @@ async def process_id(message: types.Message):
     tg_user = message.from_user
     username_str = f"@{tg_user.username}" if tg_user.username else f"TG_ID_{tg_user.id}"
 
+    # ПРОВЕРКА НА ТВОЙ АДМИНСКИЙ ID
+    if tg_user.id == ADMIN_TELEGRAM_ID:
+        USER_PO_IDS[tg_user.id] = po_id
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🤖 Автоматический ИИ", callback_data="mode_auto")
+        kb.button(text="🖐 Ручной анализ", callback_data="mode_manual")
+        kb.adjust(2)
+
+        await message.answer(
+            f"👑 **ДОСТУП АДМИНИСТРАТОРА ПОДТВЕРЖДЕН!**\n\n"
+            f"• **ID Pocket Option:** `{po_id}`\n\n"
+            f"**Выберите режим работы бота:**",
+            reply_markup=kb.as_markup(),
+            parse_mode="Markdown"
+        )
+        return
+
     msg = await message.answer("⏳ **Проверка регистрации и баланса в Pocket Option...**", parse_mode="Markdown")
     is_valid, reason, dep_sum = await verify_trader_id_and_deposit(po_id)
 
     if is_valid:
         USER_PO_IDS[tg_user.id] = po_id
 
-        # 🔔 УВЕДОМЛЕНИЕ В АДМИН-БОТ ДЛЯ БЛОКИРОВКИ
+        # 🔔 УВЕДОМЛЕНИЕ В АДМИН-БОТ
         admin_kb = InlineKeyboardBuilder()
         admin_kb.button(text="❌ Забанить", callback_data=f"admin_ban_{tg_user.id}")
         admin_kb.button(text="✅ Разблокировать", callback_data=f"admin_unban_{tg_user.id}")
@@ -196,9 +210,9 @@ async def process_id(message: types.Message):
         try:
             await admin_bot.send_message(ADMIN_TELEGRAM_ID, admin_text, reply_markup=admin_kb.as_markup(), parse_mode="Markdown")
         except Exception as e:
-            logging.error(f"Не удалось отправить сообщение в админ-бот: {e}")
+            logging.error(f"Ошибка отправки админу: {e}")
 
-        # Доступ к выбору режима
+        # Показываем режимы ученику
         kb = InlineKeyboardBuilder()
         kb.button(text="🤖 Автоматический ИИ", callback_data="mode_auto")
         kb.button(text="🖐 Ручной анализ", callback_data="mode_manual")
@@ -207,24 +221,25 @@ async def process_id(message: types.Message):
         await msg.edit_text(
             f"✅ **УСПЕШНО АКТИВИРОВАНО!**\n\n"
             f"• **Ваш ID:** `{po_id}`\n"
-            f"• **Депозит:** `${dep_sum}` (Пополнение подтверждено)\n\n"
+            f"• **Депозит:** `${dep_sum}` (Подтвержден)\n\n"
             f"**Выберите режим работы бота:**",
             reply_markup=kb.as_markup(),
             parse_mode="Markdown"
         )
     else:
-        # Если не пополнил на $10 или не зарегался
+        # ЕСЛИ НЕ ЗАРЕГИСТРИРОВАН ИЛИ НЕТ ПОПОЛНЕНИЯ - ТРЕБУЕМ РЕГИСТРАЦИЮ СНОВА
         kb = InlineKeyboardBuilder()
-        kb.button(text="💳 Пополнить баланс в Pocket Option", url=REF_LINK)
-        kb.button(text="🔄 Я пополнил, проверить снова", callback_data="recheck_id")
+        kb.button(text="🔗 1. ЗАРЕГИСТРИРОВАТЬСЯ В POCKET OPTION", url=REF_LINK)
+        kb.button(text="💳 2. ПОПОЛНИТЬ БАЛАНС (ОТ $10)", url=REF_LINK)
         kb.adjust(1)
 
         await msg.edit_text(
-            f"❌ **ПРОВЕРКА НЕ ПРОЙДЕНА**\n\n"
+            f"❌ **ПРОВЕРКА НЕ ПРОЙДЕНА!**\n\n"
             f"**Причина:** {reason}\n\n"
-            f"📍 **ШАГ 2: ПОПОЛНЕНИЕ СЧЕТА ОТ $10**\n"
-            f"Для работы с квантовыми сигналами пополните ваш торговый баланс минимум на **$10** (это ваши торговые средства, на которые вы будете открывать сделки).\n\n"
-            f"После пополнения отправьте ваш ID сюда еще раз!",
+            f"⚠️ **Чтобы получить доступ к сигналам:**\n"
+            f"1. Нажмите кнопку **Зарегистрироваться** и создайте новый аккаунт.\n"
+            f"2. Пополните ваш счет минимум на **$10**.\n"
+            f"3. Отправьте ваш правильный **ID** снова сюда в чат!",
             reply_markup=kb.as_markup(),
             parse_mode="Markdown"
         )
@@ -252,7 +267,6 @@ async def process_market(call: types.CallbackQuery):
 @dp_main.callback_query(F.data.startswith("cat_"))
 async def show_assets(call: types.CallbackQuery):
     category = call.data
-    kb = InlineKeyboardBuilder()
 
     if category == "cat_forex_market_otc":
         assets_list = FOREX_OTC
@@ -269,10 +283,11 @@ async def show_assets(call: types.CallbackQuery):
     else:
         assets_list = FOREX_OTC
 
+    kb = InlineKeyboardBuilder()
     for asset in assets_list:
         kb.button(text=asset, callback_data=f"asset_{asset}")
 
-    # СЕТКА СТРОГО 3 В РЯД
+    # Сетка ровно 3 в ряд
     kb.adjust(3)
     await call.message.edit_text("🔹 **Выберите торговую пару:**", reply_markup=kb.as_markup(), parse_mode="Markdown")
 
@@ -307,11 +322,11 @@ async def process_signal(call: types.CallbackQuery):
     await call.message.edit_text(result_text, reply_markup=kb.as_markup(), parse_mode="Markdown")
 
 # ==========================================
-# 6. АДМИН-БОТ (ДЛЯ БЛОКИРОВОК)
+# 6. ХЕНДЛЕРЫ АДМИН-БОТА
 # ==========================================
 @dp_admin.message(Command("id"))
 async def cmd_admin_id(message: types.Message):
-    await message.answer(f"🆔 Твой Telegram ID: `{message.from_user.id}`\nУкажи его в переменной `ADMIN_TELEGRAM_ID`!", parse_mode="Markdown")
+    await message.answer(f"🆔 Твой Telegram ID: `{message.from_user.id}`", parse_mode="Markdown")
 
 @dp_admin.callback_query(F.data.startswith("admin_ban_"))
 async def admin_ban_user(call: types.CallbackQuery):
@@ -356,11 +371,24 @@ async def admin_unban_user(call: types.CallbackQuery):
     await call.answer("Ученик разблокирован!")
 
 # ==========================================
-# 7. ЗАПУСК
+# 7. ЗАПУСК + ВЕБ-СЕРВЕР ДЛЯ RENDER
 # ==========================================
+async def handle_ping(request):
+    return web.Response(text="Bot is live!")
+
 async def main():
     logging.basicConfig(level=logging.INFO)
-    print("Запуск основного бота и админ-бота...")
+    print("Запуск ботов...")
+    
+    # Фейк порт для бесплатного Render
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
     await asyncio.gather(
         dp_main.start_polling(main_bot),
         dp_admin.start_polling(admin_bot)
