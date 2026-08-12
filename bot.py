@@ -164,7 +164,7 @@ async def process_id(message: types.Message):
     po_id = message.text.strip()
     tg_user = message.from_user
 
-    # ДЛЯ АДМИНА — БЕЗ ПРОВЕРОК
+    # 👑 1. ПЕРВЫМ ДЕЛОМ ПРОВЕРЯЕМ АДМИНА (БЕЗ ЗАПРОСОВ К API)
     if tg_user.id == ADMIN_TELEGRAM_ID:
         USER_PO_IDS[tg_user.id] = po_id
         kb = InlineKeyboardBuilder()
@@ -181,6 +181,7 @@ async def process_id(message: types.Message):
         )
         return
 
+    # 2. ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ ПРОВЕРЯЕМ РЕГИСТРАЦИЮ
     msg = await message.answer("⏳ **Проверка регистрации в Pocket Option по API...**", parse_mode="Markdown")
     is_registered, dep_sum = await fetch_po_user_data(po_id)
 
