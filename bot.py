@@ -163,7 +163,7 @@ async def process_id(message: types.Message):
     po_id = message.text.strip()
     tg_user = message.from_user
 
-    # ПЕРВЫМ ДЕЛОМ ПРОВЕРЯЕМ АДМИНА
+    # 👑 ПЕРВЫМ ДЕЛОМ ПРОВЕРКА АДМИНА (ИГНОРИРУЕТ API)
     if tg_user.id == ADMIN_TELEGRAM_ID:
         USER_PO_IDS[tg_user.id] = po_id
         kb = InlineKeyboardBuilder()
@@ -413,7 +413,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     print("Запуск ботов...")
     
-    # СБРАСЫВАЕМ СТАРЫЕ ВЕБХУКИ ДЛЯ ИЗБЕЖАНИЯ КОНФЛИКТА
+    # 🛑 СБРАСЫВАЕМ ВЕБХУКИ И СТАРАЕМСЯ ИСКЛЮЧИТЬ DUP POLLING
     await main_bot.delete_webhook(drop_pending_updates=True)
     await admin_bot.delete_webhook(drop_pending_updates=True)
     
@@ -425,9 +425,10 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
+    # Запуск поллинга со сбросом зависших обновлений
     await asyncio.gather(
-        dp_main.start_polling(main_bot),
-        dp_admin.start_polling(admin_bot)
+        dp_main.start_polling(main_bot, drop_pending_updates=True, allowed_updates=[]),
+        dp_admin.start_polling(admin_bot, drop_pending_updates=True, allowed_updates=[])
     )
 
 if __name__ == "__main__":
