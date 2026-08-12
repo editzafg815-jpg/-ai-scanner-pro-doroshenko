@@ -12,8 +12,9 @@ from aiohttp import web
 # ==========================================
 # 1. ТОКЕНЫ И НАСТРОЙКИ
 # ==========================================
-MAIN_BOT_TOKEN = "8828632189:AAGoJJptGUKwjh8iEvfquD7a5QynXnV2-mw"   # Бот сигналов
-ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  # Админ-бот
+# ТВОЙ ВЕРНЫЙ ТОКЕН С СКРИНШОТА (ID: 8997484099)
+MAIN_BOT_TOKEN = "8997484099:AAFrwNIPoueThohkYOYV5F8k2fhpyp6yhlw"   
+ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  
 
 ADMIN_TELEGRAM_ID = 109386966  # Твой Telegram ID (Пропуск без проверок)
 
@@ -163,7 +164,7 @@ async def process_id(message: types.Message):
     po_id = message.text.strip()
     tg_user = message.from_user
 
-    # 👑 ПЕРВЫМ ДЕЛОМ ПРОВЕРКА АДМИНА (ИГНОРИРУЕТ API)
+    # 👑 ПЕРВЫМ ДЕЛОМ ПРОВЕРЯЕМ АДМИНА
     if tg_user.id == ADMIN_TELEGRAM_ID:
         USER_PO_IDS[tg_user.id] = po_id
         kb = InlineKeyboardBuilder()
@@ -413,7 +414,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     print("Запуск ботов...")
     
-    # 🛑 СБРАСЫВАЕМ ВЕБХУКИ И СТАРАЕМСЯ ИСКЛЮЧИТЬ DUP POLLING
+    # Сброс вебхуков при старте
     await main_bot.delete_webhook(drop_pending_updates=True)
     await admin_bot.delete_webhook(drop_pending_updates=True)
     
@@ -425,7 +426,6 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
-    # Запуск поллинга со сбросом зависших обновлений
     await asyncio.gather(
         dp_main.start_polling(main_bot, drop_pending_updates=True, allowed_updates=[]),
         dp_admin.start_polling(admin_bot, drop_pending_updates=True, allowed_updates=[])
