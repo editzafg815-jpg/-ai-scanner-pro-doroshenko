@@ -12,7 +12,7 @@ from aiohttp import web
 # ==========================================
 # 1. ТОКЕНЫ И НАСТРОЙКИ
 # ==========================================
-MAIN_BOT_TOKEN = "8828632189:AAGoJJptGUKwjh8iEvfquD7a5QynXnV2-mw"   
+MAIN_BOT_TOKEN = "8997484099:AAGoJJptGUKwjh8iEvfquD7a5QynXnV2-mw"   
 ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  
 
 ADMIN_TELEGRAM_ID = 109386966
