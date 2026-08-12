@@ -12,11 +12,10 @@ from aiohttp import web
 # ==========================================
 # 1. ТОКЕНЫ И НАСТРОЙКИ
 # ==========================================
-# ТВОЙ ВЕРНЫЙ ТОКЕН С СКРИНШОТА (ID: 8997484099)
-MAIN_BOT_TOKEN = "8997484099:AAFrwNIPoueThohkYOYV5F8k2fhpyp6yhlw"   
+MAIN_BOT_TOKEN = "8828632189:AAGoJJptGUKwjh8iEvfquD7a5QynXnV2-mw"   
 ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  
 
-ADMIN_TELEGRAM_ID = 109386966  # Твой Telegram ID (Пропуск без проверок)
+ADMIN_TELEGRAM_ID = 109386966
 
 PARTNER_ID = "850173"
 PARTNER_API_TOKEN = "Zc4X9zu0EMrqbPuLy3tN"
@@ -158,13 +157,11 @@ async def process_lang(call: types.CallbackQuery):
     )
     await call.message.edit_text(text, reply_markup=kb.as_markup(), parse_mode="Markdown")
 
-# ПРОВЕРКА ID (ШАГ 1)
 @dp_main.message(F.text.isdigit())
 async def process_id(message: types.Message):
     po_id = message.text.strip()
     tg_user = message.from_user
 
-    # 👑 ПЕРВЫМ ДЕЛОМ ПРОВЕРЯЕМ АДМИНА
     if tg_user.id == ADMIN_TELEGRAM_ID:
         USER_PO_IDS[tg_user.id] = po_id
         kb = InlineKeyboardBuilder()
@@ -181,7 +178,6 @@ async def process_id(message: types.Message):
         )
         return
 
-    # ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ
     msg = await message.answer("⏳ **Проверка регистрации в Pocket Option по API...**", parse_mode="Markdown")
     is_registered, dep_sum = await fetch_po_user_data(po_id)
 
@@ -217,7 +213,6 @@ async def process_id(message: types.Message):
             parse_mode="Markdown"
         )
 
-# ПРОВЕРКА ДЕПОЗИТА (КНОПКА НА ШАГЕ 2)
 @dp_main.callback_query(F.data == "check_deposit")
 async def process_check_deposit(call: types.CallbackQuery):
     tg_user = call.from_user
@@ -413,11 +408,7 @@ async def handle_ping(request):
 async def main():
     logging.basicConfig(level=logging.INFO)
     print("Запуск ботов...")
-    
-    # Сброс вебхуков при старте
-    await main_bot.delete_webhook(drop_pending_updates=True)
-    await admin_bot.delete_webhook(drop_pending_updates=True)
-    
+
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
