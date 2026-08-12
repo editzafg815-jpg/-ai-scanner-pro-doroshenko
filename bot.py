@@ -15,8 +15,7 @@ from aiohttp import web
 MAIN_BOT_TOKEN = "8997484099:AAFrwNIPoueThohkYOYV5F8k2fhpyp6yhlw"   # Бот сигналов (для учеников)
 ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  # Админ-бот (для банов)
 
-# Твой Telegram ID (Пропускает без проверок)
-ADMIN_TELEGRAM_ID = 109386966
+ADMIN_TELEGRAM_ID = 109386966  # Твой Telegram ID (Пропуск без проверок)
 
 PARTNER_ID = "850173"
 PARTNER_API_TOKEN = "Zc4X9zu0EMrqbPuLy3tN"
@@ -29,7 +28,7 @@ dp_main = Dispatcher()
 dp_admin = Dispatcher()
 
 BANNED_USERS = set()
-USER_PO_IDS = {}
+USER_PO_IDS = {}  # Хранит PO ID пользователей
 
 # ==========================================
 # 2. СПИСОК ВСЕХ АКТИВОВ (3 В РЯД)
@@ -98,9 +97,10 @@ async def check_ban_middleware(handler, event, data):
     return await handler(event, data)
 
 # ==========================================
-# 4. ПРОВЕРКА В ПАРТНЕРКЕ
+# 4. ЗАПРОС К API ПАРТНЕРКИ
 # ==========================================
-async def verify_trader_id_and_deposit(po_user_id: str) -> tuple[bool, str, float]:
+async def fetch_po_user_data(po_user_id: str) -> tuple[bool, float]:
+    """Проверяет по API регистрацию и сумму депозита"""
     raw_hash_str = f"{po_user_id}:{PARTNER_ID}:{PARTNER_API_TOKEN}"
     hash_md5 = hashlib.md5(raw_hash_str.encode('utf-8')).hexdigest()
     url = f"https://affiliate.pocketoption.com/api/user-info/{po_user_id}/{PARTNER_ID}/{hash_md5}"
@@ -111,29 +111,22 @@ async def verify_trader_id_and_deposit(po_user_id: str) -> tuple[bool, str, floa
                 if response.status == 200:
                     data = await response.json()
                     if data and not data.get("error"):
-                        ftd_amount = float(data.get("ftd_sum", 0) or data.get("deposit_sum", 0) or 0)
-                        if ftd_amount >= 10.0:
-                            return True, "Успешно", ftd_amount
-                        elif ftd_amount > 0:
-                            return False, f"Минимальный депозит для работы с ИИ должен быть от **$10**. Ваш текущий депозит: **${ftd_amount}**.", ftd_amount
-                        else:
-                            return False, "Аккаунт найден, но **счет еще не пополнен**. Пополните баланс минимум на **$10**.", 0.0
-                    return False, "ID не найден в списке учеников.", 0.0
-                else:
-                    return False, "ID не зарегистрирован по нашей партнерской ссылке.", 0.0
+                        dep_sum = float(data.get("ftd_sum", 0) or data.get("deposit_sum", 0) or 0)
+                        return True, dep_sum
+                return False, 0.0
     except Exception as e:
         logging.error(f"API Error: {e}")
-        return False, "Ошибка связи с сервером.", 0.0
+        return False, 0.0
 
 # ==========================================
-# 5. ХЕНДЛЕРЫ ОСНОВНОГО БОТА (ДЛЯ УЧЕНИКОВ)
+# 5. ХЕНДЛЕРЫ ОСНОВНОГО БОТА
 # ==========================================
 @dp_main.message(Command("start"))
 async def cmd_start(message: types.Message):
     kb = InlineKeyboardBuilder()
     kb.button(text="🇷🇺 Русский", callback_data="lang_ru")
     kb.button(text="🇬🇧 English", callback_data="lang_en")
-    kb.button(text="🇺АК Украинский", callback_data="lang_ua")
+    kb.button(text="🇺🇦 Українська", callback_data="lang_ua")
     kb.adjust(3)
 
     text = (
@@ -160,18 +153,18 @@ async def process_lang(call: types.CallbackQuery):
         "3. **Защита от спама:** Доступ открывается только реальным ученикам.\n\n"
         "👇 **Инструкция:**\n"
         "1. Нажмите кнопку ниже и создайте новый аккаунт.\n"
-        "2. Скопируйте ваш **ID** из личного кабинета.\n"
+        "2. Скопируйте ваш **ID** из личного кабинета Pocket Option.\n"
         "3. **Отправьте ваш ID сплошным числом прямо в этот чат!**"
     )
     await call.message.edit_text(text, reply_markup=kb.as_markup(), parse_mode="Markdown")
 
+# ПРОВЕРКА ID (ШАГ 1)
 @dp_main.message(F.text.isdigit())
 async def process_id(message: types.Message):
     po_id = message.text.strip()
     tg_user = message.from_user
-    username_str = f"@{tg_user.username}" if tg_user.username else f"TG_ID_{tg_user.id}"
 
-    # ПРОВЕРКА НА ТВОЙ АДМИНСКИЙ ID
+    # ДЛЯ АДМИНА — БЕЗ ПРОВЕРОК
     if tg_user.id == ADMIN_TELEGRAM_ID:
         USER_PO_IDS[tg_user.id] = po_id
         kb = InlineKeyboardBuilder()
@@ -188,13 +181,61 @@ async def process_id(message: types.Message):
         )
         return
 
-    msg = await message.answer("⏳ **Проверка регистрации и баланса в Pocket Option...**", parse_mode="Markdown")
-    is_valid, reason, dep_sum = await verify_trader_id_and_deposit(po_id)
+    msg = await message.answer("⏳ **Проверка регистрации в Pocket Option по API...**", parse_mode="Markdown")
+    is_registered, dep_sum = await fetch_po_user_data(po_id)
 
-    if is_valid:
+    if is_registered:
+        # Успешная регистрация -> Переводим на Шаг 2 (Депозит)
         USER_PO_IDS[tg_user.id] = po_id
 
-        # 🔔 УВЕДОМЛЕНИЕ В АДМИН-БОТ
+        kb = InlineKeyboardBuilder()
+        kb.button(text="💳 1. Пополнить баланс в Pocket Option", url=REF_LINK)
+        kb.button(text="🔄 2. Проверить депозит", callback_data="check_deposit")
+        kb.adjust(1)
+
+        await msg.edit_text(
+            f"✅ **РЕГИСТРАЦИЯ ПОДТВЕРЖДЕНА!** (ID: `{po_id}`)\n\n"
+            f"📍 **ШАГ 2: ПОПОЛНЕНИЕ СЧЕТА ОТ $10**\n\n"
+            f"Чтобы подключить ИИ-сигналы к вашему аккаунту:\n"
+            f"1. Пополните ваш торговый баланс минимум на **$10** (это ваши торговые средства).\n"
+            f"2. После пополнения нажмите кнопку **«Проверить депозит»** ниже!",
+            reply_markup=kb.as_markup(),
+            parse_mode="Markdown"
+        )
+    else:
+        # Не зарегистрирован -> Оставляем на Шаге 1
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🔗 1. ЗАРЕГИСТРИРОВАТЬСЯ В POCKET OPTION", url=REF_LINK)
+        kb.adjust(1)
+
+        await msg.edit_text(
+            f"❌ **ОШИБКА: АККАУНТ НЕ НАЙДЕН**\n\n"
+            f"ID `{po_id}` не найден среди зарегистрированных по нашей партнерской ссылке.\n\n"
+            f"📍 **ШАГ 1: РЕГИСТРАЦИЯ**\n"
+            f"1. Нажмите кнопку ниже и зарегистрируйте **новый аккаунт**.\n"
+            f"2. Скопируйте ваш новый **ID** и отправьте его сюда в чат!",
+            reply_markup=kb.as_markup(),
+            parse_mode="Markdown"
+        )
+
+# ПРОВЕРКА ДЕПОЗИТА (КНОПКА НА ШАГЕ 2)
+@dp_main.callback_query(F.data == "check_deposit")
+async def process_check_deposit(call: types.CallbackQuery):
+    tg_user = call.from_user
+    po_id = USER_PO_IDS.get(tg_user.id)
+
+    if not po_id:
+        await call.answer("Сначала отправьте ваш ID числом в чат!", show_alert=True)
+        return
+
+    await call.answer("Проверяем депозит...")
+    is_registered, dep_sum = await fetch_po_user_data(po_id)
+
+    if is_registered and dep_sum >= 10.0:
+        # ДЕПОЗИТ ЕСТЬ ОТ $10 -> ОТКРЫВАЕМ СИГНАЛЫ
+        username_str = f"@{tg_user.username}" if tg_user.username else f"TG_ID_{tg_user.id}"
+
+        # Уведомление в админ-бот
         admin_kb = InlineKeyboardBuilder()
         admin_kb.button(text="❌ Забанить", callback_data=f"admin_ban_{tg_user.id}")
         admin_kb.button(text="✅ Разблокировать", callback_data=f"admin_unban_{tg_user.id}")
@@ -212,14 +253,14 @@ async def process_id(message: types.Message):
         except Exception as e:
             logging.error(f"Ошибка отправки админу: {e}")
 
-        # Показываем режимы ученику
+        # Меню режимов для ученика
         kb = InlineKeyboardBuilder()
         kb.button(text="🤖 Автоматический ИИ", callback_data="mode_auto")
         kb.button(text="🖐 Ручной анализ", callback_data="mode_manual")
         kb.adjust(2)
 
-        await msg.edit_text(
-            f"✅ **УСПЕШНО АКТИВИРОВАНО!**\n\n"
+        await call.message.edit_text(
+            f"🎉 **ПОЗДРАВЛЯЕМ! ДОСТУП ОТКРЫТ!**\n\n"
             f"• **Ваш ID:** `{po_id}`\n"
             f"• **Депозит:** `${dep_sum}` (Подтвержден)\n\n"
             f"**Выберите режим работы бота:**",
@@ -227,19 +268,18 @@ async def process_id(message: types.Message):
             parse_mode="Markdown"
         )
     else:
-        # ЕСЛИ НЕ ЗАРЕГИСТРИРОВАН ИЛИ НЕТ ПОПОЛНЕНИЯ - ТРЕБУЕМ РЕГИСТРАЦИЮ СНОВА
+        # ДЕПОЗИТА НЕТ ИЛИ МЕНЬШЕ $10
         kb = InlineKeyboardBuilder()
-        kb.button(text="🔗 1. ЗАРЕГИСТРИРОВАТЬСЯ В POCKET OPTION", url=REF_LINK)
-        kb.button(text="💳 2. ПОПОЛНИТЬ БАЛАНС (ОТ $10)", url=REF_LINK)
+        kb.button(text="💳 1. Пополнить баланс в Pocket Option", url=REF_LINK)
+        kb.button(text="🔄 2. Проверить депозит снова", callback_data="check_deposit")
         kb.adjust(1)
 
-        await msg.edit_text(
-            f"❌ **ПРОВЕРКА НЕ ПРОЙДЕНА!**\n\n"
-            f"**Причина:** {reason}\n\n"
-            f"⚠️ **Чтобы получить доступ к сигналам:**\n"
-            f"1. Нажмите кнопку **Зарегистрироваться** и создайте новый аккаунт.\n"
-            f"2. Пополните ваш счет минимум на **$10**.\n"
-            f"3. Отправьте ваш правильный **ID** снова сюда в чат!",
+        await call.message.edit_text(
+            f"❌ **ДЕПОЗИТ НЕ НАЙДЕН ИЛИ МЕНЬШЕ $10**\n\n"
+            f"Текущий депозит: **${dep_sum}**\n\n"
+            f"📍 **ШАГ 2: ПОПОЛНЕНИЕ СЧЕТА**\n"
+            f"1. Пополните ваш баланс минимум на **$10** по кнопке ниже.\n"
+            f"2. После пополнения нажмите **«Проверить депозит снова»**.",
             reply_markup=kb.as_markup(),
             parse_mode="Markdown"
         )
@@ -287,7 +327,6 @@ async def show_assets(call: types.CallbackQuery):
     for asset in assets_list:
         kb.button(text=asset, callback_data=f"asset_{asset}")
 
-    # Сетка ровно 3 в ряд
     kb.adjust(3)
     await call.message.edit_text("🔹 **Выберите торговую пару:**", reply_markup=kb.as_markup(), parse_mode="Markdown")
 
@@ -371,7 +410,7 @@ async def admin_unban_user(call: types.CallbackQuery):
     await call.answer("Ученик разблокирован!")
 
 # ==========================================
-# 7. ЗАПУСК + ВЕБ-СЕРВЕР ДЛЯ RENDER
+# 7. ЗАПУСК И ВЕБ-СЕРВЕР ДЛЯ RENDER
 # ==========================================
 async def handle_ping(request):
     return web.Response(text="Bot is live!")
@@ -380,7 +419,6 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     print("Запуск ботов...")
     
-    # Фейк порт для бесплатного Render
     app = web.Application()
     app.router.add_get("/", handle_ping)
     runner = web.AppRunner(app)
