@@ -12,8 +12,8 @@ from aiohttp import web
 # ==========================================
 # 1. ТОКЕНЫ И НАСТРОЙКИ
 # ==========================================
-MAIN_BOT_TOKEN = "8997484099:AAFrwNIPoueThohkYOYV5F8k2fhpyp6yhlw"   # Бот сигналов (для учеников)
-ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  # Админ-бот (для банов)
+MAIN_BOT_TOKEN = "8997484099:AAFRHLDfaclOo2UEzHRlkmSXCYH26PElVig"   # Бот сигналов
+ADMIN_BOT_TOKEN = "8835851545:AAFzJUzmsjmPsIXwLhnUNzF8P0qDdD8VPGQ"  # Админ-бот
 
 ADMIN_TELEGRAM_ID = 109386966  # Твой Telegram ID (Пропуск без проверок)
 
@@ -28,10 +28,10 @@ dp_main = Dispatcher()
 dp_admin = Dispatcher()
 
 BANNED_USERS = set()
-USER_PO_IDS = {}  # Хранит PO ID пользователей
+USER_PO_IDS = {}
 
 # ==========================================
-# 2. СПИСОК ВСЕХ АКТИВОВ (3 В РЯД)
+# 2. СПИСОК ВСЕХ АКТИВОВ
 # ==========================================
 FOREX_OTC = [
     "AUD/NZD OTC", "CAD/JPY OTC", "GBP/USD OTC", "NZD/USD OTC", "SAR/CNY OTC",
@@ -100,7 +100,6 @@ async def check_ban_middleware(handler, event, data):
 # 4. ЗАПРОС К API ПАРТНЕРКИ
 # ==========================================
 async def fetch_po_user_data(po_user_id: str) -> tuple[bool, float]:
-    """Проверяет по API регистрацию и сумму депозита"""
     raw_hash_str = f"{po_user_id}:{PARTNER_ID}:{PARTNER_API_TOKEN}"
     hash_md5 = hashlib.md5(raw_hash_str.encode('utf-8')).hexdigest()
     url = f"https://affiliate.pocketoption.com/api/user-info/{po_user_id}/{PARTNER_ID}/{hash_md5}"
@@ -134,7 +133,7 @@ async def cmd_start(message: types.Message):
         "🔥 **Что умеет наш ИИ-бот?**\n"
         "• Анализирует рынки Pocket Option в режиме 24/7 по 60+ активам.\n"
         "• Использует связку индикаторов **RSI (14)** + **EMA Cross** + котировки по **WebSocket**.\n"
-        "• Выдает точные точки входа с проходимостью до 92-95%.\n\n"
+        "• Выдает точные точки входа с проходимостью 65-75%.\n\n"
         "⚡️ *Для продолжения выберите язык интерфейса:* "
     )
     await message.answer(text, reply_markup=kb.as_markup(), parse_mode="Markdown")
@@ -164,7 +163,7 @@ async def process_id(message: types.Message):
     po_id = message.text.strip()
     tg_user = message.from_user
 
-    # 👑 1. ПЕРВЫМ ДЕЛОМ ПРОВЕРЯЕМ АДМИНА (БЕЗ ЗАПРОСОВ К API)
+    # ПЕРВЫМ ДЕЛОМ ПРОВЕРЯЕМ АДМИНА
     if tg_user.id == ADMIN_TELEGRAM_ID:
         USER_PO_IDS[tg_user.id] = po_id
         kb = InlineKeyboardBuilder()
@@ -181,12 +180,11 @@ async def process_id(message: types.Message):
         )
         return
 
-    # 2. ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ ПРОВЕРЯЕМ РЕГИСТРАЦИЮ
+    # ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ
     msg = await message.answer("⏳ **Проверка регистрации в Pocket Option по API...**", parse_mode="Markdown")
     is_registered, dep_sum = await fetch_po_user_data(po_id)
 
     if is_registered:
-        # Успешная регистрация -> Переводим на Шаг 2 (Депозит)
         USER_PO_IDS[tg_user.id] = po_id
 
         kb = InlineKeyboardBuilder()
@@ -204,7 +202,6 @@ async def process_id(message: types.Message):
             parse_mode="Markdown"
         )
     else:
-        # Не зарегистрирован -> Оставляем на Шаге 1
         kb = InlineKeyboardBuilder()
         kb.button(text="🔗 1. ЗАРЕГИСТРИРОВАТЬСЯ В POCKET OPTION", url=REF_LINK)
         kb.adjust(1)
@@ -233,10 +230,8 @@ async def process_check_deposit(call: types.CallbackQuery):
     is_registered, dep_sum = await fetch_po_user_data(po_id)
 
     if is_registered and dep_sum >= 10.0:
-        # ДЕПОЗИТ ЕСТЬ ОТ $10 -> ОТКРЫВАЕМ СИГНАЛЫ
         username_str = f"@{tg_user.username}" if tg_user.username else f"TG_ID_{tg_user.id}"
 
-        # Уведомление в админ-бот
         admin_kb = InlineKeyboardBuilder()
         admin_kb.button(text="❌ Забанить", callback_data=f"admin_ban_{tg_user.id}")
         admin_kb.button(text="✅ Разблокировать", callback_data=f"admin_unban_{tg_user.id}")
@@ -254,7 +249,6 @@ async def process_check_deposit(call: types.CallbackQuery):
         except Exception as e:
             logging.error(f"Ошибка отправки админу: {e}")
 
-        # Меню режимов для ученика
         kb = InlineKeyboardBuilder()
         kb.button(text="🤖 Автоматический ИИ", callback_data="mode_auto")
         kb.button(text="🖐 Ручной анализ", callback_data="mode_manual")
@@ -269,7 +263,6 @@ async def process_check_deposit(call: types.CallbackQuery):
             parse_mode="Markdown"
         )
     else:
-        # ДЕПОЗИТА НЕТ ИЛИ МЕНЬШЕ $10
         kb = InlineKeyboardBuilder()
         kb.button(text="💳 1. Пополнить баланс в Pocket Option", url=REF_LINK)
         kb.button(text="🔄 2. Проверить депозит снова", callback_data="check_deposit")
@@ -336,7 +329,7 @@ async def process_signal(call: types.CallbackQuery):
     asset_name = call.data.replace("asset_", "")
     rsi_val = round(random.uniform(25.0, 75.0), 1)
     direction = "CALL ⬆️ (ВВЕРХ)" if rsi_val < 45 else "PUT ⬇️ (ВНИЗ)"
-    accuracy = round(random.uniform(86.0, 95.0), 1)
+    accuracy = round(random.uniform(65.0, 75.0), 1)
 
     result_text = (
         f"🤖 **QUANTUM CORE: ТОРГОВЫЙ СИГНАЛ**\n"
@@ -419,6 +412,10 @@ async def handle_ping(request):
 async def main():
     logging.basicConfig(level=logging.INFO)
     print("Запуск ботов...")
+    
+    # СБРАСЫВАЕМ СТАРЫЕ ВЕБХУКИ ДЛЯ ИЗБЕЖАНИЯ КОНФЛИКТА
+    await main_bot.delete_webhook(drop_pending_updates=True)
+    await admin_bot.delete_webhook(drop_pending_updates=True)
     
     app = web.Application()
     app.router.add_get("/", handle_ping)
