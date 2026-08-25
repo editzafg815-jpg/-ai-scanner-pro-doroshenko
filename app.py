@@ -1,8 +1,7 @@
 import os
 import urllib.parse
 from flask import Flask, render_template_string, request, jsonify
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 app = Flask(__name__)
 
@@ -11,7 +10,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("ОШИБКА: Не задан GEMINI_API_KEY в Render!")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
 SYSTEM_INSTRUCTION = """
 Ты — экспертный ИИ-аналитик Master Trade 👑📊🚀.
@@ -25,6 +24,11 @@ SYSTEM_INSTRUCTION = """
 5. Запрещено упоминать администраторов, контакты или сторонние каналы 🚫.
 6. В конце сложных разборов пиши: "⚠️ Аналитика носит информационный характер и не является рекомендацией."
 """
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=SYSTEM_INSTRUCTION
+)
 
 HTML_LAYOUT = """
 <!DOCTYPE html>
@@ -190,11 +194,7 @@ def index():
 def api_chat():
     user_msg = request.json.get("message", "")
     try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=user_msg,
-            config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION)
-        )
+        response = model.generate_content(user_msg)
         return jsonify({"response": response.text})
     except Exception as e:
         return jsonify({"response": "⚠️ Произошла ошибка при обработке запроса 🔄"}), 500
@@ -204,11 +204,7 @@ def api_news():
     category = request.json.get("category", "all")
     prompt = f"Сформируй 2 актуальные главные новости для категории: {category}. Каждая новость должна содержать заголовок, краткий разбор влияния на рынок и вердикт с эмодзи."
     try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION)
-        )
+        response = model.generate_content(prompt)
         encoded_prompt = urllib.parse.quote(f"financial trading news chart {category} neon 8k")
         seed = os.urandom(4).hex()
         image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=800&height=450&seed={seed}"
